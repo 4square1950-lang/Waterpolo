@@ -1,0 +1,7 @@
+standings.json
+standings.json.tmp
+standings.social.json
+standings.social.json.tmp
+.env
+.env.*
+node_modules/

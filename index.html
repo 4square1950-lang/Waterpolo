@@ -1,0 +1,3720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AQUA 26 — Water Polo</title>
+  <!-- Three.js & OrbitControls CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <style>
+    :root {
+      --bg-dark: #05080f;
+      --bg-panel: rgba(8, 15, 28, 0.94);
+      --bg-glass: rgba(14, 25, 44, 0.82);
+      --accent-aqua: #00f0ff;
+      --accent-gold: #ffd000;
+      --accent-danger: #ff3366;
+      --accent-green: #00ff88;
+      --accent-purple: #9146ff; /* Twitch Purple */
+      --text-white: #ffffff;
+      --text-muted: #8ca3bf;
+      --border-glow: rgba(0, 240, 255, 0.35);
+      --font-display: 'Oswald', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-white);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 3D WebGL Canvas Layer */
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    #webgl-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Persistent HUD & Navigation Overlay */
+    #ui-container {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      pointer-events: none;
+    }
+
+    /* =========================================================================
+       CORNER CONTROLS: TOP-LEFT WORLD MAP & TOP-RIGHT HAMBURGER (NO TOP BAR)
+       ========================================================================= */
+    .top-floating-bar {
+      position: absolute;
+      top: 20px;
+      left: 28px;
+      right: 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 50;
+      pointer-events: auto;
+    }
+
+    .corner-btn {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glow);
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(12px);
+      transition: all 0.2s ease;
+    }
+
+    .corner-btn:hover {
+      border-color: var(--accent-aqua);
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.5);
+      transform: translateY(-2px);
+    }
+
+    .corner-btn.hamburger-btn {
+      font-size: 20px;
+      padding: 8px 16px;
+    }
+
+    /* Top-Right Hamburger Dropdown Menu (Right Under Button) */
+    .hamburger-dropdown {
+      position: absolute;
+      top: 55px;
+      right: 0;
+      width: 250px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glow);
+      border-radius: 12px;
+      padding: 8px 0;
+      display: none;
+      flex-direction: column;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(16px);
+      z-index: 100;
+      animation: dropDownAnim 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+     .hamburger-dropdown.open {
+      display: flex;
+    }
+
+    @keyframes dropDownAnim {
+      from { opacity: 0; transform: translateY(-10px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .dropdown-item {
+      padding: 12px 20px;
+      color: var(--text-white);
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .dropdown-item:hover {
+      background: rgba(0, 240, 255, 0.12);
+      color: var(--accent-aqua);
+      padding-left: 24px;
+    }
+
+    .dropdown-divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+      margin: 6px 0;
+    }
+
+    /* =========================================================================
+       BOTTOM-LEFT TWITCH CHAT & BOTTOM-RIGHT MINIMAP
+       ========================================================================= */
+    .bottom-floating-bar {
+      position: absolute;
+      bottom: 20px;
+      left: 28px;
+      right: 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      z-index: 50;
+      pointer-events: auto;
+    }
+
+    /* Twitch Chat Button & Drawer */
+    .twitch-btn {
+      background: var(--accent-purple);
+      color: #fff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      box-shadow: 0 8px 25px rgba(145, 70, 255, 0.5);
+      transition: all 0.2s;
+    }
+
+    .twitch-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 30px rgba(145, 70, 255, 0.8);
+    }
+
+    .twitch-chat-sidebar {
+      position: absolute;
+      bottom: 55px;
+      left: 0;
+      width: 340px;
+      height: 460px;
+      background: rgba(14, 18, 28, 0.95);
+      border: 1px solid rgba(145, 70, 255, 0.5);
+      border-radius: 12px;
+      display: none;
+      flex-direction: column;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(14px);
+      overflow: hidden;
+      z-index: 90;
+    }
+
+    .twitch-chat-sidebar.open {
+      display: flex;
+    }
+
+    .twitch-chat-header {
+      background: var(--accent-purple);
+      color: #fff;
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 900;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .twitch-chat-feed {
+      flex: 1;
+      padding: 12px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 12px;
+    }
+
+    .chat-msg {
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    .chat-user {
+      font-weight: 800;
+      color: var(--accent-aqua);
+    }
+    .chat-user.mod { color: var(--accent-green); }
+    .chat-user.vip { color: var(--accent-gold); }
+
+    .twitch-chat-input-bar {
+      padding: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      gap: 8px;
+    }
+
+    .twitch-input {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      outline: none;
+    }
+
+    /* Circular Radar Minimap (Bottom-Right) */
+    .minimap-wrapper {
+      position: relative;
+      width: 170px;
+      height: 170px;
+      background: rgba(5, 10, 20, 0.88);
+      border: 2px solid var(--accent-aqua);
+      border-radius: 50%;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+    }
+
+    #minimap-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .minimap-compass {
+      position: absolute;
+      top: 4px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 9px;
+      font-weight: 900;
+      color: var(--accent-aqua);
+      pointer-events: none;
+    }
+
+    /* Screen Views Area */
+    main#screen-viewport {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .view-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      padding: 80px 40px 100px 40px;
+      display: none;
+      flex-direction: column;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+
+    .view-screen.active {
+      display: flex;
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* =========================================================================
+       1. MAIN MENU (HOME TILES)
+       ========================================================================= */
+    .home-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      grid-template-rows: 1.3fr 1fr;
+      gap: 16px;
+      height: 100%;
+    }
+
+    .tile-card {
+      background: var(--bg-panel);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      overflow: hidden;
+      position: relative;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 22px;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(12px);
+    }
+
+    .tile-card:hover {
+      transform: translateY(-5px);
+      border-color: var(--accent-aqua);
+      box-shadow: 0 15px 40px rgba(0, 240, 255, 0.3);
+    }
+
+    .tile-card.hero {
+      background: linear-gradient(135deg, rgba(0, 60, 130, 0.85) 0%, rgba(5, 8, 15, 0.95) 100%),
+                  radial-gradient(circle at 80% 20%, rgba(0, 240, 255, 0.25) 0%, transparent 60%);
+      border-color: rgba(0, 240, 255, 0.4);
+    }
+
+    .tile-tag {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: var(--accent-aqua);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .tile-title {
+      font-family: var(--font-display);
+      font-size: 30px;
+      font-weight: 800;
+      text-transform: uppercase;
+      line-height: 1.1;
+      margin-bottom: 8px;
+    }
+
+    .tile-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      max-width: 90%;
+    }
+
+    .tile-btn-action {
+      margin-top: 14px;
+      align-self: flex-start;
+      background: var(--accent-aqua);
+      color: #000;
+      font-weight: 900;
+      font-size: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 8px 18px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tile-btn-action:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.6);
+    }
+
+    /* =========================================================================
+       2. 3D RPG CAMPAIGN HUD
+       ========================================================================= */
+    #view-rpg-campaign {
+      padding: 0;
+      pointer-events: none;
+    }
+
+    .rpg-hud-top {
+      position: absolute;
+      top: 75px;
+      left: 28px;
+      background: rgba(8, 15, 28, 0.90);
+      border: 1px solid var(--border-glow);
+      border-radius: 10px;
+      padding: 12px 20px;
+      backdrop-filter: blur(10px);
+      pointer-events: auto;
+      max-width: 500px;
+    }
+
+    .rpg-town-badge {
+      font-size: 11px;
+      font-weight: 900;
+      color: var(--accent-gold);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .rpg-town-title {
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .rpg-hud-instructions {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(8, 15, 28, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 30px;
+      padding: 10px 24px;
+      font-size: 12px;
+      color: var(--text-muted);
+      backdrop-filter: blur(10px);
+      pointer-events: auto;
+      white-space: nowrap;
+    }
+
+    .rpg-hud-instructions kbd {
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-family: monospace;
+    }
+
+    /* Interaction Context Prompt */
+    .interaction-prompt {
+      position: absolute;
+      top: 55%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 240, 255, 0.92);
+      color: #000;
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 900;
+      padding: 8px 20px;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0, 240, 255, 0.6);
+      display: none;
+      z-index: 60;
+      pointer-events: none;
+      animation: pulseAlert 0.4s infinite alternate;
+    }
+
+    /* =========================================================================
+       3. 10 TOWNS WORLD MAP MODAL (TOP-LEFT ATLAS)
+       ========================================================================= */
+    .world-map-modal {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(4, 7, 14, 0.94);
+      backdrop-filter: blur(18px);
+      z-index: 120;
+      display: none;
+      flex-direction: column;
+      padding: 40px 60px;
+      overflow-y: auto;
+    }
+
+    .world-map-modal.open {
+      display: flex;
+    }
+
+    .towns-grid-10 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      margin-top: 20px;
+    }
+
+    .town-card {
+      background: var(--bg-panel);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .town-card:hover, .town-card.active {
+      border-color: var(--accent-aqua);
+      box-shadow: 0 10px 30px rgba(0, 240, 255, 0.35);
+      transform: translateY(-2px);
+    }
+
+    .town-scale-badge {
+      font-size: 10px;
+      font-weight: 900;
+      background: rgba(0, 240, 255, 0.15);
+      color: var(--accent-aqua);
+      padding: 4px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* =========================================================================
+       4. MATCH ARENA HUD & SCOREBOARD
+       ========================================================================= */
+    .match-scoreboard-hud {
+      position: absolute;
+      top: 75px;
+      left: 28px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: rgba(5, 8, 15, 0.92);
+      border: 1px solid var(--border-glow);
+      border-radius: 10px;
+      padding: 10px 22px;
+      backdrop-filter: blur(12px);
+    }
+
+    .shot-clock-pill {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 900;
+      color: var(--accent-gold);
+      padding: 2px 10px;
+      border-radius: 6px;
+      background: rgba(255, 208, 0, 0.15);
+    }
+
+    .shot-clock-pill.urgent {
+      color: var(--accent-danger);
+      background: rgba(255, 51, 102, 0.2);
+      animation: pulseAlert 0.5s infinite alternate;
+    }
+
+    @keyframes pulseAlert {
+      from { transform: scale(1); }
+      to { transform: scale(1.08); }
+    }
+
+    .match-action-bar {
+      position: absolute;
+      bottom: 75px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      background: rgba(8, 15, 28, 0.92);
+      border: 1px solid var(--border-glow);
+      padding: 10px 18px;
+      border-radius: 12px;
+      backdrop-filter: blur(12px);
+    }
+
+    .banner-notification {
+      position: absolute;
+      top: 140px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 240, 255, 0.95);
+      color: #000;
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      padding: 8px 24px;
+      border-radius: 6px;
+      box-shadow: 0 10px 30px rgba(0, 240, 255, 0.6);
+      display: none;
+      z-index: 100;
+      animation: bannerSlide 0.3s ease;
+    }
+
+    @keyframes bannerSlide {
+      from { transform: translate(-50%, -15px); opacity: 0; }
+      to { transform: translate(-50%, 0); opacity: 1; }
+    }
+
+    /* Modals (Music, Settings, Awards, Pack Opening) */
+    .hud-modal {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 540px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glow);
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.92);
+      backdrop-filter: blur(20px);
+      z-index: 130;
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .hud-modal.open {
+      display: flex;
+    }
+
+    /* EA FC Customizer Sub-Nav & Tiles */
+    .customizer-box {
+      max-width: 480px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glow);
+      border-radius: 16px;
+      padding: 24px;
+      backdrop-filter: blur(14px);
+    }
+
+    .head-grid-3x3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 14px 0;
+    }
+
+    .head-preset-tile {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 14px 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .head-preset-tile:hover, .head-preset-tile.selected {
+      border-color: var(--accent-aqua);
+      background: rgba(0, 240, 255, 0.12);
+      transform: translateY(-2px);
+    }
+
+    .color-swatch-bar {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .swatch-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .swatch-btn:hover {
+      transform: scale(1.15);
+      border-color: #fff;
+    }
+
+    :root {
+      --bg-dark: #080e17;
+      --bg-glass: #101b29;
+      --accent-aqua: #8ee4df;
+      --accent-gold: #efcc8d;
+      --accent-danger: #ee8591;
+      --accent-green: #a3d4ac;
+      --text-white: #f5f8fa;
+      --text-muted: #afbdcc;
+      --border-glow: #344a59;
+    }
+    button:focus-visible, summary:focus-visible, select:focus-visible {
+      outline: 2px solid var(--accent-aqua);
+      outline-offset: 4px;
+    }
+    body[data-screen="view-home"] .top-floating-bar,
+    body:not([data-screen="view-rpg-campaign"]) .bottom-floating-bar { display: none; }
+    body:not([data-screen="view-rpg-campaign"]) .top-floating-bar > button { visibility: hidden; }
+    body[data-screen="view-home"] #view-home {
+      padding: 0;
+      overflow: auto;
+      background: linear-gradient(90deg, #08111e 1%, rgba(8,17,30,.95) 25%, rgba(8,17,30,.47) 54%, transparent 80%),
+        linear-gradient(0deg, #08111e 0%, transparent 47%);
+    }
+    .aqua-header, .aqua-nav {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 20px clamp(20px,5vw,80px);
+    }
+    .aqua-header { justify-content: space-between; }
+    .aqua-mark { display: flex; align-items: center; gap: 11px; font-weight: 800; letter-spacing: .12em; }
+    .aqua-mark > span {
+      display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%;
+      background: var(--accent-aqua); color: #0e2932; font: 800 18px var(--font-display);
+      letter-spacing: 0;
+    }
+    .aqua-hero {
+      flex: 1 0 auto; align-content: center;
+      padding: clamp(32px,8vh,105px) clamp(20px,5vw,80px);
+    }
+    .aqua-hero h1 {
+      max-width: 7ch; font-family: var(--font-display); font-weight: 700;
+      line-height: .9; letter-spacing: -.035em; font-size: clamp(60px, 11vw, 155px);
+      text-transform: uppercase; text-shadow: 0 5px 30px #050a11;
+    }
+    .aqua-hero p { color: #d9e3e9; margin-block: 22px; font-size: clamp(15px,2vw,21px); }
+    .aqua-nav { position: relative; flex-wrap: wrap; background: #0b141eee; border-top: 1px solid #2c414e; }
+    .aqua-nav details { position: relative; }
+    .aqua-nav summary { list-style: none; }
+    .aqua-nav summary::-webkit-details-marker { display: none; }
+    .aqua-nav summary::after { content: '⌃'; color: var(--accent-aqua); }
+    .aqua-nav details[open] summary { background: #233b45; border-color: var(--accent-aqua); }
+    .aqua-button, .aqua-nav summary {
+      min-height: 44px; display: inline-flex; align-items: center; gap: 12px;
+      padding: 10px 16px; border: 1px solid #3b515e; border-radius: 8px;
+      color: var(--text-white); background: #111e2a; cursor: pointer; font: 700 14px var(--font-sans);
+    }
+    .aqua-button:hover, .aqua-nav summary:hover { background: #223845; }
+    .aqua-button.primary, .tile-btn-action { background: var(--accent-aqua); color: #0b2329; }
+    .aqua-button.primary:hover, .tile-btn-action:hover { background: #b6f6f0; }
+    .aqua-nav-list {
+      position: absolute; bottom: calc(100% + 10px); left: 0; z-index: 2; display: grid;
+      width: max-content; padding: 7px; gap: 4px; border: 1px solid #435764; border-radius: 9px;
+      background: #101b28; box-shadow: 0 15px 36px #03060caa;
+    }
+    .aqua-nav-list button { text-align: start; }
+    #view-play-now.active { overflow: auto; align-items: center; justify-content: safe center; padding: 70px 16px 24px; }
+    .match-setup {
+      width: min(100%, 640px); padding: clamp(16px,4vw,36px);
+      background: #101b28f5; border: 1px solid #405560; border-radius: 14px;
+    }
+    .match-setup h2 { font: 700 clamp(30px,7vw,54px) var(--font-display); margin-block: 8px 20px; }
+    .match-setup p { color: var(--text-muted); }
+    .match-setup-actions { display: flex; justify-content: space-between; flex-wrap: wrap; margin-top: 24px; gap: 8px; }
+    #view-customizer { padding: 80px clamp(12px,4vw,52px) 20px; pointer-events: none; }
+    #view-customizer .customizer-box {
+      align-self: flex-end; width: min(320px,48%); padding: clamp(10px,2vw,18px);
+      max-height: 100%; overflow: auto; margin: 0; pointer-events: auto;
+      background: #101b28f2;
+    }
+    #view-customizer .head-preset-tile { min-width: 0; font: 600 12px var(--font-sans); }
+    #view-customizer .head-grid-3x3 { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    @media (max-width: 460px) {
+      .aqua-nav { gap: 6px; }
+      .aqua-nav summary { padding-inline: 9px; }
+      .aqua-nav details:last-of-type .aqua-nav-list { right: 0; left: auto; }
+      #view-customizer .head-grid-3x3 { grid-template-columns: 1fr; }
+    }
+    .world-map-modal.open { pointer-events: auto; }
+    #view-match { pointer-events: none; }
+    .match-action-bar { bottom: 22px; width: max-content; max-width: calc(100% - 24px); flex-wrap: wrap; justify-content: center; pointer-events: auto; }
+    .match-tests { position: relative; }
+    .match-tests .aqua-nav-list { right: 0; left: auto; }
+    #view-customizer .head-preset-tile { justify-content: center; min-height: 40px; padding: 6px; }
+    .head-preset-tile[aria-pressed="true"] { border-color: var(--accent-aqua); background: #284653; }
+    .settings-row { display: flex; gap: 10px; justify-content: space-between; align-items: center; color: var(--text-muted); border-bottom: 1px solid #30434f; padding-bottom: 12px; }
+    @media (max-width: 600px) {
+      .match-scoreboard-hud { top: 70px; left: 12px; padding: 6px 12px; }
+      #view-match div:has(> #active-venue-label) { top: 125px !important; right: 12px !important; }
+      .world-map-modal { padding: 16px; }
+      .towns-grid-10 { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    }
+    .square-control {
+      display: inline-grid; place-items:center; width: 48px; height: 48px; min-height: 48px;
+      padding:0; color:var(--accent-aqua); background:#111e2a; border:1px solid #405560;
+      border-radius:9px; cursor:pointer; pointer-events:auto;
+    }
+    .square-control:hover { background:#203747; border-color:var(--accent-aqua); }
+    .square-control svg { display:block; width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.65; }
+    .header-actions { display:flex; align-items:center; gap:9px; }
+    .main-links { display:flex; flex-wrap:wrap; gap:8px; padding:20px clamp(20px,5vw,80px); background:#0b141ef2; border-top:1px solid #2c414e; }
+    .main-links .aqua-button { justify-content:center; flex:0 1 auto; }
+    .aqua-mode-actions { display:flex; flex-wrap:wrap; gap:9px; }
+    .aqua-mode-actions .aqua-button { min-height:48px; }
+    .page-view.active { overflow:auto; padding:76px 16px 20px; align-items:center; justify-content:safe center; }
+    .game-panel { width:min(100%,700px); background:#101b28f7; border:1px solid #405560; border-radius:14px; padding:clamp(16px,4vw,34px); }
+    .game-panel h2 { font:700 clamp(26px,5vw,44px) var(--font-display); margin-bottom:16px; }
+    .game-panel h3 { margin-block:14px 8px; }
+    .game-panel p { color:var(--text-muted); margin-block:6px 16px; }
+    .game-panel label { color:var(--text-muted); display:grid; gap:6px; margin-bottom:12px; }
+    .game-panel input, #shootout-hud select {
+      min-height:42px; padding:8px 12px; width:100%; border:1px solid #405560;
+      background:#0a1420; color:var(--text-white); border-radius:8px; font:inherit;
+    }
+    .page-actions, .table-tabs, .two-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-block:12px; }
+    .table-tabs button[aria-pressed=true] { background:var(--accent-aqua); color:#0b2329; }
+    .board-scroll { overflow:auto; }
+    .board-scroll table { width:100%; border-collapse:collapse; font-size:14px; }
+    .board-scroll th,.board-scroll td { padding:12px; text-align:left; border-bottom:1px solid #344654; white-space:nowrap; }
+    .board-scroll th { color:var(--text-muted); font-weight:600; }
+    .shootout-hud { width:min(620px,calc(100% - 24px)); position:absolute; bottom:18px; left:50%; transform:translateX(-50%); background:#101b28f7; border:1px solid #405560; border-radius:10px; padding:12px; text-align:center; pointer-events:auto; }
+    .shootout-hud[hidden], .board-scroll [hidden], .game-panel [hidden] { display:none; }
+    .shootout-hud header { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:7px; margin-bottom:9px; }
+    .shootout-hud .two-actions { justify-content:center; margin-block:6px 0; }
+    .shootout-hud select { width:auto !important; }
+    .shootout-hud button:disabled { opacity:.48; cursor:default; }
+    body[data-mode="shootout"] #view-match .match-action-bar,
+    body[data-mode="shootout"] #view-match .match-scoreboard-hud { display:none; }
+    #match-venue { right:22px; }
+    .twitch-chat-sidebar { border-color:#405560; background:#101b28; }
+    .twitch-chat-header { background:#192b3b; }
+    .twitch-chat-sidebar a { color:var(--accent-aqua); }
+    @media(max-width:600px) {
+      .header-actions { gap:6px; }
+      .square-control { width:44px; height:44px; min-height:44px; }
+      .main-links { padding-block:10px; }
+      .main-links .aqua-button { padding-inline:10px; }
+    }
+  </style>
+  <link rel="stylesheet" href="/career.css">
+</head>
+<body data-screen="view-home">
+
+  <!-- Fullscreen 3D WebGL Canvas -->
+  <div id="canvas-container">
+    <canvas id="webgl-canvas"></canvas>
+  </div>
+
+  <!-- Persistent UI Overlay -->
+  <div id="ui-container">
+
+    <!-- Top Floating Controls: Top-Left World Map & Top-Right Hamburger (NO TOP BAR) -->
+    <div class="top-floating-bar">
+      <!-- Top-Left: World Map Icon (10 Towns) -->
+      <button class="square-control" type="button" onclick="toggleWorldMap()" aria-label="World Map" title="World Map">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15"/></svg>
+      </button>
+
+      <!-- Center Logo & Active Mode Indicator -->
+      <div style="display: flex; align-items: center; gap: 10px; pointer-events: none;">
+        <span style="font-family: var(--font-display); font-size: 24px; font-weight: 900; color: var(--accent-aqua); letter-spacing: 2px;">AQUA 26</span>
+        <span id="current-screen-badge" style="font-size: 11px; font-weight: 800; background: rgba(255,255,255,0.12); padding: 3px 10px; border-radius: 4px; text-transform: uppercase;">HOME</span>
+      </div>
+
+      <!-- Top-Right: Hamburger Menu & Dropdown -->
+      <div style="position: relative;">
+        <button class="square-control" id="game-menu-button" aria-label="Game menu" aria-controls="hamburger-dropdown" aria-expanded="false" onclick="toggleHamburger()">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div id="hamburger-dropdown" class="hamburger-dropdown game-options" aria-label="Game options">
+          <div class="game-options-count" id="career-coin-count"></div>
+          <button data-menu="play" onclick="gameMenu('play')">Play match</button>
+          <button onclick="gameMenu('camera')">Camera</button>
+          <button onclick="gameMenu('music')">Music</button>
+          <button onclick="gameMenu('settings')">Settings</button>
+          <button onclick="gameMenu('tutorial')">Tutorial</button>
+          <button onclick="gameMenu('rules')">Rules</button>
+          <button onclick="gameMenu('screenshot')">Screenshot</button>
+          <button id="record-game-label" onclick="gameMenu('record')">Record</button>
+          <button data-menu="leave" onclick="gameMenu('leave')">Leave match</button>
+          <button onclick="gameMenu('home')">Main menu</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Event Banner Notification -->
+    <div id="banner-notification" class="banner-notification">GOAL SCORED!</div>
+
+    <!-- Context Action Prompt (e.g. Press E to Ride Bike) -->
+    <div id="interaction-prompt" class="interaction-prompt">🚲 PRESS [E] TO RIDE ROAD BIKE</div>
+
+    <!-- Bottom Floating Bar (Bottom-Left Twitch Chat & Bottom-Right Minimap) -->
+    <div class="bottom-floating-bar">
+      <!-- Bottom-Left: Twitch Live Chat Button & Drawer -->
+      <div style="position: relative;">
+        <div id="twitch-chat-sidebar" class="twitch-chat-sidebar">
+          <div class="twitch-chat-header">
+            <span>Campus Chat</span>
+            <button class="square-control" type="button" aria-label="Close Campus Chat" onclick="toggleTwitchChat()">×</button>
+          </div>
+          <div class="twitch-chat-feed" id="twitch-chat-feed">
+            <div class="chat-msg"><span class="chat-user mod">StreamBot:</span> Welcome to World Aquatics live! Press [T] to toggle chat.</div>
+            <div class="chat-msg"><span class="chat-user">AquaFan99:</span> PogChamp look at all 15 car types and that matte black road bike!</div>
+            <div class="chat-msg"><span class="chat-user vip">PoloScout_EU:</span> You can climb the stairs inside the Athletic Center to the 2nd floor!</div>
+            <div class="chat-msg"><span class="chat-user">Torok_WP:</span> Full collision physics! You can't phase through people or walls anymore MonkaS</div>
+            <div class="chat-msg"><span class="chat-user">CaliDriver:</span> Campus streetwear looks clean with the varsity jacket and sneakers</div>
+          </div>
+          <form class="twitch-chat-input-bar" onsubmit="sendTwitchChat(event)">
+            <input type="text" id="twitch-chat-input" class="twitch-input" placeholder="Send a message (Press Enter)...">
+          </form>
+        </div>
+
+        <button class="square-control campus-chat-button" type="button" onclick="toggleTwitchChat()" aria-label="Campus Chat" title="Campus Chat (T)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v12H9l-5 4zM8 9h8M8 12h5"/></svg>
+        </button>
+      </div>
+
+      <!-- Bottom-Right: Circular Radar Minimap -->
+      <div class="minimap-wrapper" aria-label="Campus minimap">
+        <div class="minimap-compass">N</div>
+        <canvas id="minimap-canvas" width="170" height="170"></canvas>
+      </div>
+    </div>
+
+    <!-- Main Screens Viewport -->
+    <main id="screen-viewport">
+
+      <section id="view-home" class="view-screen active" aria-labelledby="title-heading">
+        <header class="aqua-home-top">
+          <h1 id="title-heading">Aqua 26</h1>
+          <nav aria-label="Account and help">
+            <button class="aqua-button" onclick="navigateTo('view-profile')">Profile</button>
+            <button class="aqua-button" onclick="openModal('modal-settings')">Settings</button>
+            <details class="aqua-home-section">
+              <summary class="aqua-button">Help</summary>
+              <div class="aqua-home-submenu career-panel">
+                <button class="aqua-button" onclick="openModal('modal-tutorial')">Training</button>
+                <button class="aqua-button" onclick="openModal('modal-rules')">Rules &amp; controls</button>
+                <button class="aqua-button" onclick="navigateTo('view-credits')">Credits &amp; credibility</button>
+              </div>
+            </details>
+          </nav>
+        </header>
+        <div class="aqua-home-footer">
+          <p class="aqua-home-venue" id="home-venue-name">Stanford Avery Aquatics</p>
+          <nav class="aqua-home-groups" aria-label="Game modes">
+            <details class="aqua-home-section">
+              <summary class="aqua-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 4 13 8-13 8z"/></svg><strong>Play</strong></summary>
+              <div class="aqua-home-submenu career-panel">
+                <button class="aqua-button" onclick="launchPoolPractice()">Single player</button>
+                <button class="aqua-button" onclick="navigateTo('view-play-now')">Local multiplayer</button>
+                <button class="aqua-button" onclick="navigateTo('view-online')">Online multiplayer</button>
+              </div>
+            </details>
+            <details class="aqua-home-section">
+              <summary class="aqua-button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg><strong>Campaign</strong></summary>
+              <div class="aqua-home-submenu career-panel">
+                <button class="aqua-button" onclick="openWorldTour()">World map</button>
+                <button class="aqua-button" onclick="openWorldTour();setMapView('views')">Venue tours</button>
+              </div>
+            </details>
+            <details class="aqua-home-section">
+              <summary class="aqua-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v6a5 5 0 0 1-10 0zM7 6H3v3a4 4 0 0 0 4 4m10-7h4v3a4 4 0 0 1-4 4m-5 2v5m-4 0h8"/></svg><strong>Compete</strong></summary>
+              <div class="aqua-home-submenu career-panel">
+                <button class="aqua-button" onclick="openWorldLeague('Team Stats')">Stats</button>
+                <button class="aqua-button" onclick="openWorldLeague('Team Standings')">Standings</button>
+              </div>
+            </details>
+            <details class="aqua-home-section">
+              <summary class="aqua-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 6 5-3a3 3 0 0 0 6 0l5 3 2 6-4 2-1-2v9H7v-9l-1 2-4-2z"/></svg><strong>Club</strong></summary>
+              <div class="aqua-home-submenu career-panel">
+                <button class="aqua-button" onclick="navigateTo('view-customizer')">Character Studio</button>
+                <button class="aqua-button" onclick="navigateTo('view-team-builder')">Team Builder</button>
+                <button class="aqua-button" onclick="navigateTo('view-celebrations')">Celebrations</button>
+              </div>
+            </details>
+          </nav>
+          <div class="aqua-home-music">
+            <button class="aqua-button" id="home-music-toggle" onclick="toggleCampusMusic()">Play music</button>
+            <span>Campus theme</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="view-screen career-page" id="view-profile" aria-label="Profile">
+        <div class="career-wrap">
+          <nav class="career-nav" aria-label="Profile navigation">
+            <button class="square-control career-red" aria-label="Back" onclick="backProfile()">←</button>
+            <button class="square-control career-red" aria-label="Close profile" onclick="navigateTo('view-home')">×</button>
+          </nav>
+          <header class="career-panel career-pad profile-cover">
+            <div class="profile-hero">
+              <div class="career-avatar">
+                <div class="career-portrait" id="profile-portrait">🤽</div>
+                <button class="square-control avatar-edit" id="profile-pencil" aria-label="Edit profile" onclick="editCareerProfile()">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m19 15 2 6-6-2L3 7l4-4zM6 10l4-4"/></svg>
+                </button>
+              </div>
+              <div>
+                <h1 id="profile-title"></h1>
+                <p id="profile-display" class="career-muted"></p>
+                <div id="profile-counts" class="profile-counts"></div>
+                <p id="profile-bio" class="career-muted"></p>
+                <p id="profile-level-label"></p>
+              </div>
+              <button class="square-control" aria-label="Messages" onclick="showInbox()">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 3-6 18-4-8-8-4zM11 13 21 3"/></svg>
+              </button>
+            </div>
+            <div class="career-actions" id="visited-actions"></div>
+          </header>
+          <form class="profile-search" onsubmit="event.preventDefault(); showPeople('search')">
+            <input class="career-input" id="people-search" maxlength="64" placeholder="Search by display name or username" aria-label="Search people">
+            <button type="submit" class="aqua-button">Search</button>
+          </form>
+          <section id="people-results" class="career-panel career-pad" hidden aria-label="Player directory"></section>
+          <div id="personal-profile">
+            <section class="career-panel career-preview" aria-label="Athlete preview">
+              <div id="profile-athlete"></div>
+              <span class="career-preview-text career-muted">Athlete preview · Drag to rotate</span>
+              <button class="aqua-button" onclick="navigateTo('view-customizer')">Character Studio</button>
+            </section>
+            <section class="career-panel">
+              <nav class="career-tabs" id="profile-tabs" aria-label="Profile sections"></nav>
+              <div id="profile-content" class="career-pad"></div>
+            </section>
+            <footer class="career-panel career-pad profile-xp">
+              <strong id="profile-level"></strong>
+              <progress id="profile-xp" aria-label="Level progress"></progress>
+              <span class="career-muted" id="profile-xp-label"></span>
+            </footer>
+          </div>
+        </div>
+      </section>
+
+      <section class="view-screen career-page" id="view-credits" aria-labelledby="credits-heading">
+        <div class="career-wrap">
+          <header class="career-nav">
+            <h1 id="credits-heading">Credits &amp; credibility</h1>
+            <button class="aqua-button" onclick="leaveCredits()">← Back</button>
+          </header>
+          <div class="aqua-credits-split career-panel">
+            <dl class="aqua-credit-pairs" aria-label="Roles and contributors">
+              <div><dt>Game development</dt><dd>Aqua 26 project</dd></div>
+              <div><dt>3D rendering</dt><dd>Three.js contributors</dd></div>
+              <div><dt>World map outlines</dt><dd>Natural Earth</dd></div>
+              <div><dt>Satellite imagery</dt><dd>Esri and imagery partners</dd></div>
+              <div><dt>Championship results</dt><dd>World Aquatics · OMEGA Timing</dd></div>
+            </dl>
+            <figure class="aqua-credits-visual">
+              <div id="credits-swimmer"></div>
+              <figcaption>Aqua 26</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <dialog class="career-editor" id="profile-editor" aria-labelledby="profile-editor-title">
+        <form onsubmit="saveCareerProfile(event)">
+          <header><h2 id="profile-editor-title">Edit profile</h2><button type="button" class="square-control career-red" aria-label="Close editor" onclick="element('profile-editor').close()">×</button></header>
+          <label>Profile mascot</label><fieldset class="mascot-grid" id="mascot-grid" aria-label="Profile mascot"></fieldset>
+          <label>Username <small class="career-muted">Change once every seven days</small><input id="profile-username" maxlength="64" autocomplete="username"></label>
+          <label>Display name<input id="profile-name" maxlength="64" autocomplete="nickname" required></label>
+          <label>Bio<textarea id="profile-bio-edit" maxlength="1000" rows="4"></textarea></label>
+          <label>YouTube channel <small class="career-muted">Optional</small><input id="profile-youtube" type="url" maxlength="256" placeholder="https://www.youtube.com/@channel"></label>
+          <p id="profile-status" role="status"></p>
+          <button class="aqua-button primary" type="submit">Save changes</button>
+        </form>
+      </dialog>
+      <dialog id="profile-inbox" aria-label="Messages">
+        <nav class="career-nav"><h2>Messages</h2><button class="square-control career-red" aria-label="Close messages" onclick="element('profile-inbox').close()">×</button></nav>
+        <div id="inbox-list"></div>
+        <div id="inbox-thread"></div>
+        <form class="profile-search" id="message-form" hidden onsubmit="sendCareerMessage(event)">
+          <input class="career-input" id="message-text" aria-label="Message" maxlength="500" required>
+          <button class="aqua-button primary" type="submit">Send</button>
+        </form>
+        <p id="inbox-status" role="status"></p>
+      </dialog>
+
+
+      <section class="view-screen page-view" id="view-online" aria-labelledby="online-title">
+        <div class="game-panel">
+          <h2 id="online-title">Online Play</h2>
+          <p>Play a five-shot shootout with a friend on the same game server.</p>
+          <div class="two-actions">
+            <button class="aqua-button primary" id="create-room" type="button" onclick="connectOnline('host')">Create Room</button>
+          </div>
+          <form onsubmit="event.preventDefault(); connectOnline('join')">
+            <label>Room code<input id="online-code" maxlength="6" pattern="[A-Fa-f0-9]{6}" placeholder="6-character code" autocomplete="off" required></label>
+            <button class="aqua-button" id="join-room" type="submit">Join Room</button>
+          </form>
+          <p id="online-status" role="status"></p>
+          <button class="aqua-button" onclick="navigateTo('view-home')">← Home</button>
+        </div>
+      </section>
+
+      <section class="view-screen career-page" id="view-board" aria-labelledby="board-title">
+        <div class="career-wrap">
+          <header class="career-nav"><div><p class="career-muted" id="league-context">World Championships · Singapore 2025</p><h1 id="board-title">Stats &amp; Standings</h1></div>
+            <button class="aqua-button" onclick="navigateTo('view-home')">← Home</button></header>
+          <nav class="career-actions" id="league-sources" aria-label="Results source"></nav>
+          <div id="league-summary" class="career-metrics"></div>
+          <section class="career-panel league-board" aria-label="Water polo results">
+            <nav class="career-tabs" aria-label="League sections" id="league-tabs"></nav>
+            <div class="career-pad">
+              <div class="career-actions league-filters" id="league-filters"></div>
+              <p class="career-muted" id="board-status" role="status"></p>
+              <div class="board-scroll" id="board-table"></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-screen career-page" id="view-world-tour" aria-labelledby="tour-title">
+        <div class="career-wrap">
+          <header class="career-nav">
+            <h1 id="tour-title">World Tour</h1>
+            <div class="tour-controls"><button class="aqua-button" id="tour-city" onclick="setMapView('venue')">Satellite</button><button class="aqua-button" id="tour-views" onclick="setMapView('views')">3D Venue</button><button class="aqua-button" id="tour-globe" onclick="setMapView('globe')">Globe</button>
+              <button class="square-control career-red" aria-label="Close world map" onclick="closeWorldTour()">×</button></div>
+          </header>
+          <div class="tour-layout">
+            <section class="career-panel">
+              <div class="map-stage" id="map-stage" aria-label="Destination map">
+                <div id="tour-art"></div><strong class="map-stage-label" id="tour-map-city"></strong>
+                <span class="map-credit" id="map-credit"></span>
+                <a class="map-attribution" id="satellite-credit" href="https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9" target="_blank" rel="noopener" hidden>Imagery © Esri, Maxar, Earthstar Geographics and the GIS User Community</a>
+                <div class="satellite-controls" id="satellite-controls" hidden><button class="square-control" aria-label="Zoom satellite map in" onclick="zoomSatellite(1)">+</button><button class="square-control" aria-label="Zoom satellite map out" onclick="zoomSatellite(-1)">−</button></div>
+                <span class="satellite-status" id="satellite-status" role="status" hidden></span>
+              </div>
+              <nav class="venue-angles" id="venue-angles" aria-label="Venue camera angles" hidden></nav>
+              <nav class="map-stops" id="map-stops" aria-label="Tour stops"></nav>
+            </section>
+            <article class="career-panel tour-card">
+              <div class="tour-venue-art" id="tour-card-art" aria-hidden="true"></div>
+              <div class="career-pad">
+                <p class="career-muted" id="tour-location"></p><h2 id="tour-venue"></h2>
+                <p class="career-muted" id="tour-status"></p>
+                <div class="career-actions">
+                  <button class="square-control" aria-label="Previous destination" onclick="changeDestination(-1)">‹</button>
+                  <button class="aqua-button primary" id="tour-travel" onclick="startWorldTravel()">Travel</button>
+                  <button class="square-control" aria-label="Next destination" onclick="changeDestination(1)">›</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="view-screen" id="view-travel" aria-label="Travel">
+        <div class="travel-overlay"><p class="career-muted" id="travel-from"></p><h1 id="travel-to"></h1>
+          <progress id="travel-progress" max="1" aria-label="Travel progress"></progress>
+          <button class="aqua-button" onclick="finishWorldTravel()">Skip ride →</button>
+        </div>
+      </section>
+
+
+
+      <!-- ================= 2. 3D RPG CAMPAIGN MODE (CAMPUS OVERWORLD) ================= -->
+      <section id="view-rpg-campaign" class="view-screen">
+        <!-- Campus Info HUD -->
+        <div class="rpg-hud-top">
+          <div class="rpg-town-badge" id="rpg-town-badge">Campus 1 of 10</div>
+          <div class="rpg-town-title" id="rpg-town-title">Stanford Avery Aquatics (USA)</div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" id="rpg-town-desc">
+            Romanesque quads, California palm tree avenues, collegiate shuttles, and the Avery Aquatic Center.
+          </div>
+          <div style="font-size: 11px; color: var(--accent-aqua); margin-top: 6px;">
+            Explore the Athletic Union or head to the pool.
+          </div>
+        </div>
+
+        <!-- Controls Bar -->
+        <div class="rpg-hud-instructions">
+          <kbd>WASD</kbd> Move · <kbd>Shift</kbd> Sprint · <kbd>E</kbd> Bike
+        </div>
+      </section>
+
+      <section id="view-play-now" class="view-screen" aria-labelledby="match-setup-heading">
+        <div class="match-setup">
+          <p>Danube Arena</p>
+          <h2 id="match-setup-heading">Local Play</h2>
+          <p>Share the controls in a five-shot shootout, or practice solo.</p>
+          <form onsubmit="event.preventDefault(); startLocalShootout()">
+            <label style="display:grid;gap:6px;margin:14px 0;">Player 2
+              <input class="twitch-input" maxlength="40" id="local-player-two" value="Player 2" required>
+            </label>
+            <button class="aqua-button primary" type="submit">Local Shootout</button>
+          </form>
+          <div class="match-setup-actions">
+            <button class="aqua-button" onclick="navigateTo('view-home')">← Home</button>
+            <button class="aqua-button" onclick="navigateTo('view-match')">Solo Practice</button>
+          </div>
+        </div>
+      </section>
+
+
+      <!-- ================= 4. LIVE 3D MATCH ARENA (7v7 FINA MATCH ENGINE) ================= -->
+      <section id="view-match" class="view-screen" style="padding: 0;">
+        <!-- Match Scoreboard HUD -->
+        <div class="match-scoreboard-hud">
+          <span style="font-family: var(--font-display); font-size: 24px; font-weight: 900;" id="match-score-text">HUN 4 - 3 ITA</span>
+          <span style="width: 2px; height: 26px; background: rgba(255,255,255,0.2);"></span>
+          <span style="font-family: var(--font-display); font-size: 20px; font-weight: 800;" id="game-clock-display">07:24</span>
+          <span style="width: 2px; height: 26px; background: rgba(255,255,255,0.2);"></span>
+          <span class="shot-clock-pill" id="shot-clock-display">28s</span>
+          <span id="excl-chip-ita" style="display: none; background: var(--accent-danger); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 900;">
+            ITA 6v5 (<span id="excl-timer-val">20</span>s)
+          </span>
+        </div>
+
+        <!-- Venue Label -->
+        <div style="position: absolute; top: 75px; right: 28px; background: rgba(5,8,15,0.92); border: 1px solid var(--border-glow); border-radius: 8px; padding: 8px 16px; font-size: 12px;">
+          <b id="active-venue-label">Danube Arena (Budapest)</b>
+        </div>
+
+        <section id="shootout-hud" class="shootout-hud" aria-label="Shootout controls" hidden>
+          <header>
+            <strong id="shootout-score"></strong>
+            <button class="aqua-button" onclick="navigateTo('view-home')">Exit</button>
+          </header>
+          <p id="shootout-turn" role="status"></p>
+          <p id="shootout-result" role="status"></p>
+          <div class="two-actions" id="shootout-actions">
+            <select id="shootout-aim" aria-label="Aim"><option value="-1">Aim left</option><option value="0" selected>Aim center</option><option value="1">Aim right</option></select>
+            <button class="aqua-button" data-shot="skip" onclick="takeShootoutShot('skip')">Skip</button>
+            <button class="aqua-button" data-shot="lob" onclick="takeShootoutShot('lob')">Lob</button>
+            <button class="aqua-button primary" data-shot="power" onclick="takeShootoutShot('power')">Power</button>
+          </div>
+        </section>
+
+        <!-- In-Match Action Controls Bar -->
+        <div class="match-action-bar">
+          <button class="aqua-button" onclick="triggerSkipShot()">Skip Shot</button>
+          <button class="aqua-button" onclick="triggerLobShot()">Lob Shot</button>
+          <button class="aqua-button primary" onclick="triggerPowerShot()">Power Shot</button>
+          <details class="match-tests">
+            <summary class="aqua-button">Match Tools</summary>
+            <div class="aqua-nav-list">
+              <button class="aqua-button" onclick="resetPracticeShot()">Reset Ball</button>
+              <button class="aqua-button" onclick="trigger20sExclusion()">20s Exclusion</button>
+              <button class="aqua-button" onclick="trigger5mPenalty()">5m Penalty</button>
+              <button class="aqua-button" onclick="triggerOrdinaryFoul()">Ordinary Foul</button>
+              <button class="aqua-button" onclick="navigateTo('view-home')">Exit Match</button>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- ================= 5. ULTIMATE TEAM / TEAM BUILDER ================= -->
+      <section id="view-team-builder" class="view-screen">
+        <div style="max-width: 800px; margin: 0 auto; width: 100%; background: var(--bg-panel); border: 1px solid var(--border-glow); border-radius: 16px; padding: 30px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div>
+              <h2 style="font-family: var(--font-display); font-size: 32px; text-transform: uppercase;">AQUA Team Builder</h2>
+              <p style="color: var(--text-muted); font-size: 13px;">7 Starters • Chemistry: 33/33 (Hungarian Brotherhood) • Rating: 88 OVR</p>
+            </div>
+            <button class="tile-btn-action" onclick="openPackModal()">🎁 Open Gold Pack</button>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
+            <div class="corner-btn" style="flex-direction: column; align-items: flex-start; padding: 12px;">
+              <span style="font-size: 10px; color: var(--accent-gold);">CF #9</span>
+              <b>G. Varga (92)</b>
+              <small style="color: var(--text-muted);">Hole Set Finisher</small>
+            </div>
+            <div class="corner-btn" style="flex-direction: column; align-items: flex-start; padding: 12px;">
+              <span style="font-size: 10px; color: var(--accent-gold);">CD #4</span>
+              <b>D. Varga (90)</b>
+              <small style="color: var(--text-muted);">Defensive Anchor</small>
+            </div>
+            <div class="corner-btn" style="flex-direction: column; align-items: flex-start; padding: 12px;">
+              <span style="font-size: 10px; color: var(--accent-gold);">WG #2</span>
+              <b>K. Manhercz (88)</b>
+              <small style="color: var(--text-muted);">Perimeter Sniper</small>
+            </div>
+            <div class="corner-btn" style="flex-direction: column; align-items: flex-start; padding: 12px;">
+              <span style="font-size: 10px; color: var(--accent-gold);">GK #1</span>
+              <b>S. Vogel (91)</b>
+              <small style="color: var(--text-muted);">Penalty Wall</small>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <button class="corner-btn" onclick="navigateTo('view-home')">← Main Menu</button>
+            <button class="tile-btn-action" onclick="navigateTo('view-match')">Deploy In 7v7 Match</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-customizer" class="view-screen" aria-labelledby="studio-heading">
+        <div class="studio-preview-ui">
+          <header><h1 id="studio-heading">Character Studio</h1><p>Drag the pool view to orbit.</p></header>
+          <nav class="studio-motion" id="studio-motion" aria-label="Athlete preview moves"></nav>
+        </div>
+        <div class="studio-layout">
+          <nav class="studio-tabs" id="studio-tabs" aria-label="Customization categories"></nav>
+          <div class="studio-fields" id="studio-fields"></div>
+          <footer class="studio-field-actions">
+            <button class="aqua-button" onclick="closeAthleteStudio()">Back</button>
+            <button class="aqua-button" onclick="resetAthleteDraft()">Reset</button>
+            <button class="aqua-button primary" onclick="commitAthleteDraft()">Save athlete</button>
+            <p id="studio-status" role="status"></p>
+          </footer>
+        </div>
+      </section>
+
+
+      <!-- ================= 7. 32 SIGNATURE CELEBRATIONS ================= -->
+      <section id="view-celebrations" class="view-screen">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div>
+            <div style="font-size: 11px; font-weight: 900; color: var(--accent-gold); letter-spacing: 2px;">ANIMATION VAULT</div>
+            <h2 style="font-family: var(--font-display); font-size: 32px; text-transform: uppercase;">32 Signature Celebrations</h2>
+          </div>
+          <button class="corner-btn" onclick="navigateTo('view-home')">← Main Menu</button>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; overflow-y: auto; flex: 1;" id="celeb-grid"></div>
+      </section>
+
+      <!-- ================= 8. STADIUM SELECTOR ================= -->
+      <section id="view-stadiums" class="view-screen">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h2 style="font-family: var(--font-display); font-size: 32px; text-transform: uppercase;">World Stadium Selector</h2>
+          <button class="corner-btn" onclick="navigateTo('view-home')">← Main Menu</button>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+          <div class="corner-btn" style="flex-direction: column; align-items: flex-start; padding: 20px;" onclick="switchStadium('danube')">
+            <b style="font-size: 18px;">Danube Arena</b>
+            <span style="font-size: 12px; color: var(--accent-gold); margin-top: 4px;">Budapest, Hungary • Indoor Cathedral</span>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">12,000 capacity, reverberant metal acoustics, intense overhead LED lighting.</p>
+          </div>
+          <div class="corner-btn" style="flex-direction: column; align-items: flex-start; padding: 20px;" onclick="switchStadium('rome')">
+            <b style="font-size: 18px;">Stadio del Nuoto</b>
+            <span style="font-size: 12px; color: var(--accent-gold); margin-top: 4px;">Rome, Italy • Mediterranean Open-Air</span>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">Historic outdoor Olympic venue, sunny Italian daylight, surrounding pines.</p>
+          </div>
+          <div class="corner-btn" style="flex-direction: column; align-items: flex-start; padding: 20px;" onclick="switchStadium('stanford')">
+            <b style="font-size: 18px;">Avery Aquatics</b>
+            <span style="font-size: 12px; color: var(--accent-gold); margin-top: 4px;">California, USA • Collegiate Sunlit</span>
+            <p style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">California sunshine, Romanesque campus quads, palm trees, crystal water.</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+
+    <div id="modal-camera" class="hud-modal">
+      <div class="career-nav"><h2>Camera</h2><button class="square-control career-red" aria-label="Close camera settings" onclick="closeModals()">×</button></div>
+      <div class="career-actions" id="camera-options"></div>
+    </div>
+    <div id="modal-rules" class="hud-modal">
+      <div class="career-nav"><h2>Rules &amp; controls</h2><button class="square-control career-red" aria-label="Close rules" onclick="closeModals()">×</button></div>
+      <p>Each player takes five shots. Choose left, center or right, then throw a skip, lob or power shot.</p>
+      <p>Goals decide the shootout. A win earns three standings points and a tie earns one.</p>
+      <p>Campus: use WASD or arrow keys to move, Shift to sprint, and E to mount the bike.</p>
+    </div>
+    <div id="modal-tutorial" class="hud-modal">
+      <div class="career-nav"><h2>Shooting practice</h2><button class="square-control career-red" aria-label="Close tutorial" onclick="closeModals()">×</button></div>
+      <p>Try each shot in the 3D pool. A skip bounces off the water, a lob arcs over the keeper, and a power shot travels fast and flat.</p>
+      <button class="aqua-button primary" onclick="launchPoolPractice()">Enter practice</button>
+    </div>
+    <!-- Dropdown Modals (Music, Settings, Awards, Pack Opening) -->
+    <div id="modal-music" class="hud-modal">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Music</h2>
+        <button class="corner-btn" onclick="closeModals()">✕</button>
+      </div>
+      <p class="career-muted">Campus theme</p>
+      <button class="aqua-button" id="music-toggle" onclick="toggleCampusMusic()">Play music</button>
+    </div>
+
+    <div id="modal-settings" class="hud-modal">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="font-family: var(--font-display); font-size: 26px; text-transform: uppercase;">Settings</h2>
+        <button class="corner-btn" onclick="closeModals()">✕</button>
+      </div>
+      <label class="settings-row"><span>Sound effects</span><input type="checkbox" checked onchange="soundEnabled = this.checked"></label>
+      <div class="settings-row"><strong>Match</strong><span>Drag to orbit · Scroll to zoom · Choose a shot</span></div>
+      <div class="settings-row"><strong>Campus</strong><span>WASD to walk · Shift to sprint · E to ride</span></div>
+      <div class="settings-row"><strong>Match format</strong><span>7v7 shooting scenario</span></div>
+      <div class="career-actions"><button class="aqua-button primary" onclick="closeModals()">Done</button><button class="aqua-button" onclick="openModal('modal-music')">Music</button></div>
+    </div>
+
+    <div id="modal-awards" class="hud-modal">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="font-family: var(--font-display); font-size: 26px; text-transform: uppercase;">🏆 Achievements & Awards</h2>
+        <button class="corner-btn" onclick="closeModals()">✕</button>
+      </div>
+      <div style="font-size: 13px; color: var(--text-muted);">Olympic Gold Medal 2024 • European Champions League Trophy 2025 • Master of the Skip Shot • 10 Campuses Master.</div>
+      <button class="tile-btn-action" onclick="closeModals()">View Trophy Room</button>
+    </div>
+
+    <!-- Gold Pack Opening Walkout Modal -->
+    <div id="pack-modal" class="hud-modal" style="text-align: center;">
+      <div style="font-size: 11px; font-weight: 900; color: var(--accent-gold); letter-spacing: 2px;">ULTIMATE SQUAD PACK REVEAL</div>
+      <h1 style="font-family: var(--font-display); font-size: 40px; color: var(--accent-gold);">WALKOUT!</h1>
+      <div style="font-size: 70px; margin: 10px 0;">🇭🇺 🤽‍♂️</div>
+      <h2 style="font-family: var(--font-display); font-size: 28px;">GERGŐ VARGA (92 OVR)</h2>
+      <p style="color: var(--text-muted); font-size: 13px;">Center-Forward • Hungary National Team • Gold Special Card</p>
+      <button class="tile-btn-action" style="margin: 16px auto 0 auto;" onclick="closePackModal()">Add to Active Squad</button>
+    </div>
+
+  </div>
+
+  <script src="/shootout.js"></script>
+  <!-- Audio Synthesis & Complete 3D Engine -->
+  <script>
+    /* =========================================================================
+       1. SYNTHESIZED WEB AUDIO (Fox 40 Whistle, Splashes, Post Clang, Horn, Crowd)
+       ========================================================================= */
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let soundEnabled = true;
+
+    function playAudio(type) {
+      if (!soundEnabled) return;
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      if (type === 'whistle_short') playTone(2800, 0.12);
+      if (type === 'whistle_exclusion') playTone(3100, 0.35, 'square');
+      if (type === 'splash') playSplashSound();
+      if (type === 'post_clang') playPostClang();
+      if (type === 'goal_horn') playGoalHorn();
+      if (type === 'bike_bell') playBikeBell();
+      if (type === 'footstep') playTone(120, 0.04, 'sine');
+      if (type === 'click') playTone(900, 0.05, 'sine');
+    }
+
+    function playTone(freq, dur, wave = 'triangle') {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = wave;
+      o.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      g.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+      o.connect(g);
+      g.connect(audioCtx.destination);
+      o.start();
+      o.stop(audioCtx.currentTime + dur);
+    }
+
+    function playBikeBell() {
+      const o1 = audioCtx.createOscillator();
+      const o2 = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o1.type = 'sine'; o2.type = 'sine';
+      o1.frequency.setValueAtTime(2200, audioCtx.currentTime);
+      o2.frequency.setValueAtTime(2600, audioCtx.currentTime);
+      g.gain.setValueAtTime(0.35, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+      o1.connect(g); o2.connect(g);
+      g.connect(audioCtx.destination);
+      o1.start(); o2.start();
+      o1.stop(audioCtx.currentTime + 0.4); o2.stop(audioCtx.currentTime + 0.4);
+    }
+
+    function playSplashSound() {
+      const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.35, audioCtx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      const flt = audioCtx.createBiquadFilter();
+      flt.type = 'lowpass';
+      flt.frequency.setValueAtTime(950, audioCtx.currentTime);
+      flt.frequency.linearRampToValueAtTime(140, audioCtx.currentTime + 0.35);
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+      src.connect(flt);
+      flt.connect(gain);
+      gain.connect(audioCtx.destination);
+      src.start();
+    }
+
+    function playPostClang() {
+      const o1 = audioCtx.createOscillator();
+      const o2 = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o1.type = 'sine';
+      o2.type = 'triangle';
+      o1.frequency.setValueAtTime(1420, audioCtx.currentTime);
+      o2.frequency.setValueAtTime(2850, audioCtx.currentTime);
+      g.gain.setValueAtTime(0.5, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.65);
+      o1.connect(g);
+      o2.connect(g);
+      g.connect(audioCtx.destination);
+      o1.start();
+      o2.start();
+      o1.stop(audioCtx.currentTime + 0.65);
+      o2.stop(audioCtx.currentTime + 0.65);
+    }
+
+    function playGoalHorn() {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(180, audioCtx.currentTime);
+      g.gain.setValueAtTime(0.6, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.2);
+      o.connect(g);
+      g.connect(audioCtx.destination);
+      o.start();
+      o.stop(audioCtx.currentTime + 1.2);
+    }
+
+    /* =========================================================================
+       2. THREE.JS 3D SCENE & CAMERAS
+       ========================================================================= */
+    const canvas = document.getElementById('webgl-canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.12;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x05080f);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 1.45, 2.4);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.target.set(0, 1.2, 0);
+
+    const ambientLight = new THREE.HemisphereLight(0xe3eff8, 0x74818e, 0.93);
+    scene.add(ambientLight);
+
+    const mainLight = new THREE.DirectionalLight(0xfffaed, 1.18);
+    mainLight.position.set(20, 40, 20);
+    mainLight.castShadow = true;
+    scene.add(mainLight);
+
+    /* =========================================================================
+       3. 10 PROGRESSIVELY LARGER CAMPUSES DATABASE
+       ========================================================================= */
+    const TOWNS_DATABASE = [
+      { id: 1, name: "Stanford Avery Aquatics", nation: "USA (California)", scale: "Tier 1 (Base Campus)", size: 48, theme: "stanford", desc: "Romanesque quads, palm tree avenues, campus shuttles, and Avery Pool." },
+      { id: 2, name: "Margaret Island (Margitsziget)", nation: "Budapest, Hungary", scale: "Tier 2 (Island Park)", size: 64, theme: "budapest", desc: "Danube river banks, thermal park greenery, and the iconic Alfréd Hajós natatorium." },
+      { id: 3, name: "Recco Coastal Riviera", nation: "Liguria, Italy", scale: "Tier 3 (Riviera Campus)", size: 80, theme: "recco", desc: "Mediterranean cliffside villas, coastal promenade, and sea-view training pools." },
+      { id: 4, name: "Kotor Bay Citadel & Pool", nation: "Montenegro", scale: "Tier 4 (Adriatic Fjord)", size: 95, theme: "kotor", desc: "Ancient Venetian stone fortress walls, harbor dockways, and fjord waters." },
+      { id: 5, name: "Dubrovnik Lapad Campus", nation: "Croatia", scale: "Tier 5 (Fortress City)", size: 110, theme: "dubrovnik", desc: "Limestone street architecture, terraced stone athletic courts, and Adriatic outlooks." },
+      { id: 6, name: "Belgrade Tašmajdan District", nation: "Serbia", scale: "Tier 6 (Athletic Complex)", size: 125, theme: "belgrade", desc: "St. Mark's church park campus, wide concrete boulevards, and intense Serbian arenas." },
+      { id: 7, name: "Barceloneta Marina Campus", nation: "Barcelona, Spain", scale: "Tier 7 (Beachside Marina)", size: 145, theme: "barcelona", desc: "Palm-lined seaside boardwalk, yacht harbor, and modern Catalan aquatic centers." },
+      { id: 8, name: "Piraeus Nautical Port", nation: "Athens, Greece", scale: "Tier 8 (Aegean Harbor)", size: 165, theme: "piraeus", desc: "Historic Saronic marina, marble staircases, and Olympiacos athletic grounds." },
+      { id: 9, name: "Westwood UCLA Village", nation: "Los Angeles, USA", scale: "Tier 9 (Metropolitan Campus)", size: 185, theme: "ucla", desc: "Sprawling red-brick collegiate campus, eucalyptus groves, and Spieker Aquatics." },
+      { id: 10, name: "Marseille Cercle des Nageurs", nation: "France", scale: "Tier 10 (Grand Olympic Center)", size: 215, theme: "marseille", desc: "Catalans cove cliffside terraces, luxury yacht piers, and world-class championship arena." }
+    ];
+
+    let currentTown = TOWNS_DATABASE[0];
+
+
+    const materials = new Map();
+    function surface(color, roughness = 0.77) {
+      const key = color + ':' + roughness;
+      if (!materials.has(key)) {
+        const material = new THREE.MeshStandardMaterial({ color, roughness });
+        material.color.convertSRGBToLinear();
+        materials.set(key, material);
+      }
+      return materials.get(key);
+    }
+    // The studio edits only the user's materials. NPCs, officials and match kits own their palettes.
+    const skinMat = surface(0xbe8768).clone();
+    const hairMat = surface(0x30241f).clone();
+    const noseTapeMat = surface(0x82c9c9).clone();
+    const unitOval = new THREE.SphereGeometry(1, 20, 14);
+    const unitBox = new THREE.BoxGeometry(1, 1, 1);
+    const profiles = new Map();
+    function meshPart(parent, geometry, material, x, y, z, w = 1, h = 1, d = 1) {
+      const part = new THREE.Mesh(geometry, material);
+      part.position.set(x, y, z);
+      part.scale.set(w, h, d);
+      parent.add(part);
+      return part;
+    }
+    function oval(parent, material, x, y, z, w, h, d) {
+      return meshPart(parent, unitOval, material, x, y, z, w, h, d);
+    }
+    function form(parent, name, points, material, x, y, z, depth = 1) {
+      if (!profiles.has(name)) {
+        const curve = new THREE.SplineCurve(points.map(([r, y]) => new THREE.Vector2(r,y)));
+        profiles.set(name, new THREE.LatheGeometry(curve.getPoints(22).map(p => {
+          p.x = Math.max(0, p.x);
+          return p;
+        }), 24));
+      }
+      return meshPart(parent, profiles.get(name), material, x, y, z, 1, 1, depth);
+    }
+    function joint(parent,x,y,z) {
+      const group = new THREE.Group();
+      group.position.set(x,y,z);
+      parent.add(group);
+      return group;
+    }
+    const numberMaterials = new Map();
+    function capNumber(number, darkInk) {
+      const key = number + ':' + darkInk;
+      if (!numberMaterials.has(key)) {
+        const label = document.createElement('canvas');
+        label.width = label.height = 64;
+        const ctx = label.getContext('2d');
+        ctx.font = '900 52px Arial';
+        ctx.fillStyle = darkInk ? '#1b344d' : '#f4f8fa';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(number, 32, 34);
+        const map = new THREE.CanvasTexture(label);
+        map.encoding = THREE.sRGBEncoding;
+        numberMaterials.set(key, new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false }));
+      }
+      return numberMaterials.get(key);
+    }
+    const labelPlane = new THREE.PlaneGeometry(0.085, 0.085);
+    function articulatedSkin(outline, depth, hingeLow, hingeHigh) {
+      const curve=new THREE.SplineCurve(outline.map(([x,y])=>new THREE.Vector2(x,y)));
+      const geometry=new THREE.LatheGeometry(curve.getPoints(42).map(p=>new THREE.Vector2(Math.max(.001,p.x),p.y)),24);
+      geometry.scale(1,1,depth);
+      const points=geometry.getAttribute('position'), weights=[], indices=[];
+      for(let i=0;i<points.count;i++){
+        const lower=1-THREE.MathUtils.smoothstep(points.getY(i),hingeLow,hingeHigh);
+        indices.push(0,1,0,0);weights.push(1-lower,lower,0,0);
+      }
+      geometry.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(indices,4));
+      geometry.setAttribute('skinWeight',new THREE.Float32BufferAttribute(weights,4));
+      return geometry;
+    }
+    const armSkin=articulatedSkin([
+      [.001,-.493],[.028,-.475],[.031,-.432],[.038,-.377],[.047,-.320],[.043,-.277],
+      [.044,-.248],[.048,-.211],[.054,-.150],[.062,-.086],[.070,-.015],[.060,.025],[.034,.059],[.001,.070]
+    ],.86,-.315,-.199);
+    const legSkin=articulatedSkin([
+      [.002,-.793],[.032,-.778],[.034,-.743],[.037,-.688],[.048,-.602],[.064,-.516],
+      [.063,-.467],[.053,-.431],[.058,-.398],[.060,-.366],[.071,-.289],[.082,-.14],
+      [.086,-.053],[.077,.023],[.048,.063],[.002,.076]
+    ],.87,-.472,-.326);
+    const torsoContours=new WeakMap();
+    const skinDetails=new WeakMap();
+    function swimmerDetails(torso, skin, bodyWidth) {
+      const source=torso.geometry;
+      if(!torsoContours.has(source)){
+        const mesh=source.clone(), positions=mesh.getAttribute('position');
+        for(let i=0;i<positions.count;i++){
+          const x=positions.getX(i),y=positions.getY(i),z=positions.getZ(i);
+          if(z>0){
+            const pec=Math.exp(-((Math.abs(x)-.102)**2/.007+(y-1.282)**2/.0040));
+            const oblique=Math.exp(-((Math.abs(x)-.096)**2/.006+(y-1.130)**2/.005));
+            const sternum=Math.exp(-(x*x/.0012+(y-1.246)**2/.009));
+            const navel=Math.exp(-(x*x/.00032+(y-1.068)**2/.00040));
+            positions.setZ(i,z+(.030*pec+.014*oblique-.010*sternum-.014*navel)*Math.min(1,z/.13));
+          }
+        }
+        mesh.computeVertexNormals();torsoContours.set(source,mesh);
+      }
+      torso.geometry=torsoContours.get(source);
+      if(!skinDetails.has(skin)){
+        const areola=skin.clone(), recess=skin.clone();
+        areola.color.lerp(new THREE.Color(0x754231).convertSRGBToLinear(),.34);
+        recess.color.multiplyScalar(.62);
+        skinDetails.set(skin,{areola,recess});
+      }
+      const {areola,recess}=skinDetails.get(skin);
+      for(const side of [-1,1]){
+        const mark=oval(torso.parent,areola,side*.106*bodyWidth,1.257,.124,.012,.009,.0037);
+        mark.rotation.y=side*.42;
+        oval(torso.parent,areola,side*.106*bodyWidth,1.257,.1264,.0035,.0031,.0023);
+      }
+      const navel=oval(torso.parent,recess,0,1.067,.094,.005,.007,.0027);
+      navel.rotation.x=-.16;
+      oval(torso.parent,skin,0,1.061,.095,.009,.0027,.0021);
+    }
+    const handDigits=new Map();
+    const skinningMaterials=new WeakMap();
+    function skinnedLimbMaterial(original) {
+      if(!skinningMaterials.has(original)) {
+        const material=original.clone();
+        material.skinning=true;
+        skinningMaterials.set(original,material);
+      }
+      return skinningMaterials.get(original);
+    }
+    function createHand(parent,skin,side,handScale) {
+      const hand=joint(parent,0,-.205,.006);
+      hand.scale.setScalar(handScale);
+      form(hand,'sculpted palm',[[.008,-.09],[.031,-.08],[.036,-.046],[.03,-.019],[.025,.016],[.012,.032]],skin,0,0,0,.61);
+      oval(hand,skin,-side*.018,-.037,.012,.023,.035,.012);
+      oval(hand,skin,side*.011,-.066,.012,.022,.017,.012);
+      const lengths=[.047,.059,.064,.052];
+      for(let i=0;i<4;i++){
+        const x=side*(i-1.5)*.017, length=lengths[i];
+        if(!handDigits.has(side+':'+i)){
+          const path=new THREE.CatmullRomCurve3([
+            new THREE.Vector3(x,-.074,.003),new THREE.Vector3(x*1.11,-.092,.006),
+            new THREE.Vector3(x*1.17,-.081-length*.70,.015),new THREE.Vector3(x*1.12,-.081-length,.025)
+          ]);
+          const shape=new THREE.TubeGeometry(path,12,.01,10,false), attr=shape.getAttribute('position');
+          for(let ring=0;ring<=12;ring++){
+            const t=ring/12, center=path.getPointAt(t);
+            const taper=(1-.36*t)*(t>.83?Math.max(.11,(1-t)*5.4):1);
+            for(let point=0;point<=10;point++){
+              const k=ring*11+point;
+              attr.setXYZ(k,center.x+(attr.getX(k)-center.x)*taper,center.y+(attr.getY(k)-center.y)*taper,center.z+(attr.getZ(k)-center.z)*taper);
+            }
+          }
+          shape.computeVertexNormals();handDigits.set(side+':'+i,shape);
+        }
+        meshPart(hand,handDigits.get(side+':'+i),skin,0,0,0);
+        oval(hand,skin,x,-.081,.003,.012,.014,.012);
+      }
+      const thumb=oval(hand,skin,-side*.040,-.049,.016,.012,.029,.012);
+      thumb.rotation.z=-side*.58;thumb.rotation.x=-.25;
+      oval(hand,skin,-side*.055,-.065,.025,.010,.016,.009).rotation.z=-side*.42;
+      return hand;
+    }
+
+    function createDetailedHumanoid(isClothed = true, customSkin = null, customHair = null,
+      customShirt = null, customPants = null, kit = {}) {
+      const root = new THREE.Group();
+      const look=kit.look;
+      const materialFrom=(color,fallback,roughness)=>color?surface(Number(color.replace("#","0x")),roughness):fallback;
+      const skin = materialFrom(look?.skin,customSkin || skinMat,.72);
+      const hair = materialFrom(look?.hair,customHair || hairMat,.76);
+      const shirt = materialFrom(look?.warmup,customShirt || surface(0x234f65),.79);
+      const pants = materialFrom(isClothed?look?.warmupBottom:look?.suit,customPants || surface(isClothed ? 0x283540 : kit.team === 'ITA' ? 0x32667e : 0x182b4d),.52);
+      const trim = materialFrom(look?.trim,surface(kit.official ? 0x849ca4 : 0xbcd2d1),.58);
+      const dark = surface(0x201c1c);
+      const capColor = materialFrom(look?.cap,surface(kit.goalie ? 0xae374e : kit.team === 'ITA' ? 0xe9ece5 : 0x263f81,.59),.59);
+      const badgeNumber=look?look.number:kit.number;
+      const bodyWidth=look?.shoulders||1;
+      const isItalianFieldPlayer = kit.team === 'ITA' && !kit.goalie;
+      const accent = materialFrom(look?.trim,surface(isItalianFieldPlayer ? 0x3c796b : 0xc8d8db),.54);
+      const iris = materialFrom(look?.eyes,surface(kit.iris || 0x54382b,0.49),.49);
+      const upperBody = isClothed ? shirt : skin;
+
+      const torso=form(root,'athletic torso revised',[[.002,.83],[.129,.85],[.167,.92],[.161,1.04],
+        [.181,1.15],[.208,1.24],[.211,1.32],[.185,1.381],[.134,1.420],[.075,1.451],[.002,1.46]],upperBody,0,0,-.006,.63);
+      torso.scale.x=bodyWidth;
+      if(!isClothed&&look?.suitStyle!=='Training suit')swimmerDetails(torso,skin,bodyWidth);
+      if(!isClothed&&look?.suitStyle==='Training suit'){
+        const front=form(root,'training suit panel',[[.126,.864],[.163,.917],[.163,1.046],[.188,1.17],[.208,1.28],[.189,1.36],[.117,1.423]],pants,0,0,0,.65);
+        front.scale.x=bodyWidth;
+      }
+      oval(root, pants,0,.862,-.008,.158,.093,.091);
+      oval(root, skin,0,1.448,-.003,.067,.095,.062);
+      if (isClothed) {
+        form(root, 'waistband', [[.14,.865],[.167,.888],[.167,.932],[.153,.938]], trim,0,0,0,.63);
+        form(root, 'collar', [[.076,1.411],[.091,1.422],[.078,1.455],[.062,1.46]], trim,0,0,0,.78);
+        if (kit.official) {
+          const cord = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(-.066,1.43,.063), new THREE.Vector3(-.036,1.30,.125),
+            new THREE.Vector3(0,1.23,.131), new THREE.Vector3(.036,1.30,.125), new THREE.Vector3(.066,1.43,.063)
+          ]);
+          meshPart(root, new THREE.TubeGeometry(cord, 18, .004, 5, false), dark,0,0,0);
+          meshPart(root, unitBox, surface(0x4c5860,.34),0,1.22,.136,.022,.032,.014);
+        } else {
+          meshPart(root,unitBox,trim,-.077,1.25,.113,.049,.013,.008).rotation.y = -.25;
+          meshPart(root,unitBox,trim,.074,1.25,.113,.031,.035,.008).rotation.y = .25;
+        }
+      }
+
+      const headGroup = joint(root,0,1.618,.006);
+      headGroup.scale.set(look?.faceWidth||1,look?.faceHeight||1,.96);
+      const jaw=look?.jaw||1;
+      const face=joint(headGroup,0,0,0);
+      form(face,'refined face',[[.001,-.133],[.042,-.128],[.065,-.110],[.080,-.080],[.092,-.042],
+        [.100,-.008],[.099,.037],[.087,.077],[.069,.107],[.034,.122],[.001,.124]],skin,0,0,0,.94);
+      oval(face,skin,0,-.105,.055,.049*jaw,.026,.031);
+      for (const side of [-1,1]) {
+        oval(headGroup,skin,side*.096,-.029,.001,.022,.035,.019);
+        oval(headGroup,surface(0x9a6049),side*.105,-.031,.013,.008,.020,.005);
+        const eye = joint(headGroup,side*.041*(look?.eyeSpacing||1),.016,.084);
+        eye.scale.setScalar(look?.eyeSize||1);
+        eye.rotation.y = side*.23;
+        oval(eye,surface(0x765246),0,0,0,.027,.012,.008);
+        oval(eye,surface(0xf3eee3),0,-.001,.006,.023,.0085,.007);
+        oval(eye,iris,0,-.0005,.0115,.008,.0083,.0038);
+        oval(eye,dark,0,-.0003,.014,.0037,.005,.0018);
+        oval(eye,surface(0xf8f8f4),-.002,.003,.016,.0019,.0018,.001);
+        oval(headGroup,hair,side*.043,.041,.084,.027,.0048*(look?.brows||1),.006).rotation.z = side*-.12;
+        oval(headGroup,skin,side*.012,-.036,.102,.010,.007,.010);
+      }
+      const nose=look?.nose||1;
+      oval(headGroup,skin,0,-.009,.093,.013*nose,.026,.014*nose).rotation.x=-.15;
+      oval(headGroup,skin,0,-.031,.104,.016*nose,.012,.015*nose);
+      const lips=surface(kit.lips||0x985446), mouth=look?.mouth||1;
+      oval(headGroup,lips,0,-.066,.086,.030*mouth,.007,.008);
+      oval(headGroup,dark,0,-.065,.093,.026*mouth,.0017,.0022);
+      oval(headGroup,lips,0,-.071,.087,.023*mouth,.0038,.005);
+      const noseTape=oval(headGroup,materialFrom(look?.trim,noseTapeMat,.55),0,-.013,.109,.018,.004,.006);
+      noseTape.visible=Boolean(look?.tape);
+
+      const hairGroup=joint(headGroup,0,0,0);
+      const hairStyle=look?.hairStyle||'Side part';
+      if(hairStyle!=='Shaved'){
+        const buzz=hairStyle==='Buzz cut';
+        oval(hairGroup,hair,0,.071,-.018,.103,buzz?.054:.068,.095);
+        oval(hairGroup,hair,0,.011,-.055,.097,buzz?.068:.088,.051);
+        if(hairStyle==='Curls'){
+          for(let i=0;i<12;i++){
+            const a=i*Math.PI*2/12;
+            oval(hairGroup,hair,Math.sin(a)*.076,.100+Math.sin(i*5)*.013,Math.cos(a)*.058,.034,.037,.033);
+          }
+        }else if(hairStyle==='Tied back'){
+          oval(hairGroup,hair,0,.077,-.087,.076,.065,.066);
+          oval(hairGroup,hair,0,.061,-.129,.044,.040,.045);
+        }else if(!buzz) {
+          for(let lock=0;lock<5;lock++){
+            const wave=oval(hairGroup,hair,(lock-2)*.033,.074+lock*.004,.051+(2-Math.abs(lock-2))*.006,.036,.029,.043);
+            wave.rotation.z=hairStyle==='Sweep left'?-.46:.46;
+          }
+        }
+      }
+      const capGroup = joint(headGroup,0,0,0);
+      form(capGroup,'competition cap',[[.089,-.016],[.102,.014],[.107,.075],[.083,.119],[.041,.138],[0,.143]],capColor,0,0,-.012,1);
+      form(capGroup,'cap seam',[[.094,.026],[.105,.038],[.105,.043],[.098,.048]],accent,0,0,-.011,.96);
+      if(look?.capPattern==='Dual stripe'){
+        form(capGroup,'swim cap dual band',[[.100,.062],[.107,.069],[.105,.076],[.097,.079]],accent,0,0,-.011,1);
+      } else if(look?.capPattern==='Crown panel') {
+        form(capGroup,'swim cap crown panel',[[.099,.091],[.085,.119],[.041,.139],[.001,.145]],accent,0,0,-.012,1);
+      }
+      for (const side of [-1,1]) {
+        oval(capGroup,capColor,side*.106,-.015,0,.025,.047,.044);
+        oval(capGroup,accent,side*.126,-.016,0,.008,.031,.028);
+        for (let vent=-1; vent<=1; vent++) {
+          oval(capGroup,capColor,side*.133,-.016,vent*.011,.002,.004,.003);
+        }
+        oval(capGroup,accent,side*.063,-.075,.048,.008,.056,.007).rotation.z = -side*.5;
+        if (badgeNumber!=null) {
+          const badge = meshPart(capGroup,labelPlane,capNumber(badgeNumber,isItalianFieldPlayer),side*.090,.076,.038);
+          badge.rotation.y = side*.95;
+        }
+      }
+      if (badgeNumber!=null) meshPart(capGroup,labelPlane,capNumber(badgeNumber,isItalianFieldPlayer),0,.076,.095);
+      capGroup.visible=!isClothed&&(look?.headwear||'Cap')==='Cap';
+      hairGroup.visible=!capGroup.visible;
+      if(look?.goggles) {
+        const frame=surface(0x233645,.4), glass=surface(0x69ace0,.23);
+        for(const side of [-1,1]) {
+          oval(headGroup,frame,side*.041,.018,.104,.029,.016,.010);
+          oval(headGroup,glass,side*.041,.018,.111,.024,.012,.005);
+        }
+        oval(headGroup,frame,0,.019,.112,.017,.005,.004);
+        form(headGroup,'goggle strap',[[.093,.019],[.102,.025],[.103,.031],[.096,.035]],frame,0,0,0,.94);
+      }
+
+      function arm(side) {
+        const upper=joint(root,side*.175*bodyWidth,1.351,0);
+        upper.scale.set(look?.armBuild||1,1,look?.armBuild||1);
+        const skinMesh=new THREE.SkinnedMesh(armSkin,skinnedLimbMaterial(skin));
+        skinMesh.frustumCulled=false;
+        upper.add(skinMesh);
+        const shoulder=new THREE.Bone(), elbow=new THREE.Bone();
+        elbow.position.set(0,-.257,.004);
+        shoulder.add(elbow);skinMesh.add(shoulder);
+        skinMesh.bind(new THREE.Skeleton([shoulder,elbow]));
+        upper.fore=elbow;
+        upper.hand=createHand(elbow,skin,side,look?.handSize||1);
+        if(isClothed){
+          form(upper,'fitted sleeve',[[.053,-.145],[.062,-.139],[.074,-.062],[.076,.002],[.050,.047],[.001,.070]],shirt,0,0,0,.93);
+          form(upper,'sleeve piping',[[.053,-.146],[.063,-.141],[.063,-.130]],trim,0,0,0,.94);
+        }
+        return upper;
+      }
+      function leg(side) {
+        const upper = joint(root,side*.083,.852,0);
+        if (!isClothed) {
+          if(look?.suitStyle==='Jammer') form(upper,'long swim jammer',[[.064,-.304],[.070,-.287],[.078,-.175],[.089,-.066],[.081,.057]],pants,0,0,0,.94);
+          else form(upper,'swim brief',[[.067,-.128],[.074,-.113],[.085,-.041],[.076,.053]],pants,0,0,0,.93);
+        }
+        const legMesh=new THREE.SkinnedMesh(legSkin,skinnedLimbMaterial(isClothed?pants:skin));
+        legMesh.frustumCulled=false;upper.add(legMesh);
+        const hip=new THREE.Bone(), knee=new THREE.Bone();
+        knee.position.y=-.40;
+        hip.add(knee);legMesh.add(hip);
+        legMesh.bind(new THREE.Skeleton([hip,knee]));
+        upper.shin=knee;
+        const foot = joint(upper.shin,0,-.384,.035);
+        upper.foot=foot;
+        if (isClothed) {
+          oval(foot,surface(0xc8d2d5),0,-.035,.029,.054,.025,.103);
+          oval(foot,surface(kit.official ? 0x222c37 : 0xe8e5e0),0,-.007,.027,.051,.043,.096);
+          oval(foot,trim,0,.014,.067,.043,.018,.046);
+          for (let lace=0; lace<3; lace++) oval(foot,surface(0xa3b2b7),0,.034-lace*.003,.025+lace*.017,.032,.004,.004);
+        } else {
+          const sole=form(foot,'swimmer foot',[[.002,-.085],[.027,-.074],[.033,-.053],[.029,-.018],
+            [.038,.029],[.045,.061],[.038,.085],[.008,.094]],skin,0,-.026,.018,.54);
+          sole.rotation.x=Math.PI/2;
+          oval(foot,skin,0,-.001,-.016,.028,.035,.041);
+          for(let toe=0;toe<5;toe++){
+            const width=.0114-toe*.00115, length=.022-toe*.0031;
+            const x=side*(-.028+toe*.015);
+            oval(foot,skin,x,-.028+toe*.001,.092-toe*.004,width,.0097-toe*.0007,length);
+          }
+        }
+        return upper;
+      }
+      if(look){
+        const height=look.heightCm/178;
+        const girth=THREE.MathUtils.clamp(Math.sqrt((look.weightKg/76)/height),.78,1.34);
+        root.scale.set(girth,height,girth);
+      }
+      root.rig = {headGroup, leftArm: arm(-1), rightArm: arm(1), leftLeg: leg(-1), rightLeg: leg(1)};
+      root.noseTapeMesh = noseTape;
+      root.hairGroup = hairGroup;
+      root.capGroup = capGroup;
+      root.radius = 0.45;
+      return root;
+    }
+
+    /* =========================================================================
+       5. 15 CAR BODY TYPES PROCEDURAL FACTORY (From Reference Image #1)
+       ========================================================================= */
+    const CAR_TYPES = [
+      'sedan', 'coupe', 'hatchback', 'pickup', 'offroad',
+      'sport', 'micro', 'van', 'convertible', 'crossover',
+      'suv', 'wagon', 'muscle', 'roadster', 'cabriolet'
+    ];
+
+    const carSpecs = {
+      sedan:[4.35,1.80,.34,.67,.60,.43,.01], coupe:[4.18,1.81,.34,.60,.53,.42,.04],
+      hatchback:[3.78,1.72,.33,.65,.68,.52,.07], pickup:[4.95,2.02,.43,.80,.76,.40,-.19],
+      offroad:[4.45,2.03,.50,.88,.84,.59,.03], sport:[4.40,1.97,.34,.53,.48,.34,.10],
+      micro:[2.65,1.51,.28,.60,.78,.63,.04], van:[4.95,2.01,.37,1.03,.83,.74,.06],
+      crossover:[4.43,1.89,.41,.79,.67,.54,.06], suv:[4.72,2.03,.43,.88,.79,.60,.05],
+      wagon:[4.76,1.87,.36,.74,.64,.57,.06], muscle:[4.69,1.92,.37,.67,.55,.40,.11],
+      roadster:[3.92,1.77,.34,.53,.38,.39,.04], convertible:[4.35,1.84,.36,.59,.42,.44,.08],
+      cabriolet:[4.17,1.78,.34,.63,.46,.46,.07]
+    };
+    const tireMaterial = surface(0x222529);
+    const alloyMaterial = surface(0x9aa7af,.28);
+    const chassisTrim = surface(0x202d35,.59);
+    const carGlass = surface(0x314a60,.26);
+    const windshield = surface(0x577282,.28);
+    const carLamp = surface(0xe3f3ef,.27);
+    const carTail = surface(0xb93344,.29);
+    const plateMaterial = surface(0xd8ddd6);
+    const vehicleShades = new Map();
+    const tireGeometry = new THREE.LatheGeometry([
+      [0,-.105],[.69,-.107],[.90,-.108],[.98,-.083],[1,-.057],
+      [1,.057],[.98,.083],[.9,.108],[.69,.107],[0,.105]
+    ].map(([x,y])=>new THREE.Vector2(x,y)), 28);
+    const hubGeometry = new THREE.CylinderGeometry(1,1,.025,20);
+    const wheelArch = new THREE.TorusGeometry(1,.056,7,22,Math.PI);
+
+    // A loft through changing cross sections gives the hood, bumpers and cabin
+    // their own width, slope and height while sharing a symmetric surface.
+    function carShell(parent, material, sections) {
+      const positions = [], indices = [];
+      sections.forEach(([z,w,low,high]) => {
+        const span = high-low;
+        const outline = [[-.78,0],[-.98,.15],[-1,.58],[-.95,.82],[-.77,.98],[-.42,1.02],
+          [.42,1.02],[.77,.98],[.95,.82],[1,.58],[.98,.15],[.78,0]];
+        for (const [x,y] of outline) positions.push(x*w,low+span*y,z);
+      });
+      const ring = 12;
+      for (let r=0;r<sections.length-1;r++) for (let i=0;i<ring;i++) {
+        const a=r*ring+i,b=r*ring+(i+1)%ring;
+        indices.push(a,a+ring,b,b,a+ring,b+ring);
+      }
+      for (let i=1;i<ring-1;i++) {
+        const last=(sections.length-1)*ring;
+        indices.push(0,i,i+1,last,last+i+1,last+i);
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      return meshPart(parent,geometry,material,0,0,0);
+    }
+
+    function makeVehicleWheel(car,x,radius,z,side) {
+      const pivot = joint(car,x,radius+.018,z);
+      const tire = meshPart(pivot,tireGeometry,tireMaterial,0,0,0,radius,1,radius);
+      tire.rotation.z = Math.PI/2;
+      const rim = meshPart(pivot,hubGeometry,alloyMaterial,side*.109,0,0,radius*.68,1,radius*.68);
+      rim.rotation.z = Math.PI/2;
+      const disc = meshPart(pivot,hubGeometry,chassisTrim,side*.123,0,0,radius*.53,1,radius*.53);
+      disc.rotation.z = Math.PI/2;
+      for (let spoke=0;spoke<5;spoke++) {
+        const angle=spoke*Math.PI*2/5;
+        const blade=meshPart(pivot,unitBox,alloyMaterial,side*.137,Math.cos(angle)*radius*.36,Math.sin(angle)*radius*.36,.019,radius*.46,.038);
+        blade.rotation.x=angle-.14;
+      }
+      oval(pivot,alloyMaterial,side*.151,0,0,.019,radius*.16,radius*.16);
+      return pivot;
+    }
+
+    function createCarModel(type, color) {
+      const car = new THREE.Group();
+      const [length,width,radius,shoulder,cabHeight,cabSize,shift]=carSpecs[type];
+      const half=length/2, sideWidth=width/2, cab=length*cabSize/2, center=shift*length;
+      const axle=length*.32;
+      if (!vehicleShades.has(color)) {
+        vehicleShades.set(color,new THREE.MeshPhysicalMaterial({
+          color: new THREE.Color(color).convertSRGBToLinear(), roughness:.34, metalness:.14,
+          clearcoat:.82, clearcoatRoughness:.24, side:THREE.DoubleSide
+        }));
+      }
+      const paint=vehicleShades.get(color);
+      const isOpen=['roadster','convertible','cabriolet'].includes(type);
+      const tallRear=['van','hatchback','wagon','suv','offroad'].includes(type);
+      const sill=Math.max(radius*.69,.23);
+      const hood=shoulder*(type==='van'?.84:.97);
+      const tail=shoulder*(tallRear ? 1.06 : .95);
+      carShell(car,paint,[
+        [-half,sideWidth*.72,sill+.09,hood*.74],[-half+.14,sideWidth*.92,sill+.03,hood*.90],
+        [-half+.36,sideWidth*.98,sill,hood],[-axle,sideWidth,sill,shoulder],
+        [center-cab*.4,sideWidth*.98,sill,shoulder+.015],[center+cab*.55,sideWidth*.97,sill,shoulder],
+        [axle,sideWidth,sill,tail], [half-.18,sideWidth*.93,sill+.02,tail*.96],
+        [half,sideWidth*.80,sill+.07,tail*.79]
+      ]);
+      const roofY=shoulder+cabHeight;
+      const front=center-cab, rear=center+cab;
+      const rearSlope=rear-cab*(tallRear?.12:.46);
+      const frontSlope=front+cab*.44;
+      if (isOpen) {
+        const screen=meshPart(car,unitBox,windshield,0,shoulder+.18,front+.1,width*.79,.40,.045);
+        screen.rotation.x=.43;
+        for(const x of [-width*.19,width*.19]) {
+          oval(car,chassisTrim,x,shoulder+.07,center+.16,.21,.13,cab*.55);
+          oval(car,chassisTrim,x,shoulder+.25,center+.34,.15,.20,.08);
+        }
+      } else {
+        carShell(car,carGlass,[[front,sideWidth*.77,shoulder,shoulder+.045],
+          [frontSlope,sideWidth*.69,shoulder,roofY-.038],[rearSlope,sideWidth*.67,shoulder,roofY-.038],
+          [rear,sideWidth*.72,shoulder,shoulder+.075]]);
+        carShell(car,paint,[[frontSlope-.09,sideWidth*.63,roofY-.064,roofY-.032],
+          [frontSlope+.08,sideWidth*.69,roofY-.049,roofY],[rearSlope-.05,sideWidth*.68,roofY-.043,roofY],
+          [rearSlope+.09,sideWidth*.61,roofY-.067,roofY-.032]]);
+        for(const side of [-1,1]) {
+          const pillar=meshPart(car,unitBox,chassisTrim,side*sideWidth*.704,shoulder+cabHeight*.44,center+.07,.026,cabHeight*.90,.043);
+          pillar.rotation.z=side*.095;
+        }
+      }
+      if(type==='pickup'){
+        meshPart(car,unitBox,chassisTrim,0,shoulder+.019,(rear+half)*.5,width*.79,.036,half-rear);
+        for(const side of [-1,1]) meshPart(car,unitBox,paint,side*sideWidth*.87,shoulder+.12,(rear+half)*.5,.096,.24,half-rear);
+        meshPart(car,unitBox,paint,0,shoulder+.12,half-.10,width*.89,.24,.114);
+      }
+      if(type==='sport'||type==='muscle') {
+        meshPart(car,unitBox,chassisTrim,0,tail+.15,half-.28,width*.80,.055,.24);
+        for(const side of [-1,1]) meshPart(car,unitBox,paint,side*width*.25,tail+.07,half-.27,.06,.16,.10);
+      }
+      if(type==='offroad'||type==='wagon') {
+        for(const side of [-1,1]) meshPart(car,unitBox,chassisTrim,side*width*.27,roofY+.045,center,.058,.06,cab*1.34);
+      }
+      const nose= -half-.012, trunk=half+.012;
+      meshPart(car,unitBox,chassisTrim,0,hood*.60,nose,width*.54,.14,.075);
+      meshPart(car,unitBox,chassisTrim,0,sill+.14,trunk,width*.82,.11,.09);
+      for(let grille=0;grille<3;grille++) meshPart(car,unitBox,alloyMaterial,0,hood*.60+(grille-1)*.038,nose-.041,width*.46,.008,.009);
+      meshPart(car,unitBox,plateMaterial,0,tail*.70,trunk+.01,.33,.10,.025);
+      meshPart(car,unitBox,chassisTrim,0,tail*.70,trunk+.026,.22,.019,.003);
+      const wheels=[];
+      for(const side of [-1,1]){
+        const head=oval(car,carLamp,side*sideWidth*.63,hood*.77,-half+.02,.20,.065,.055);
+        head.rotation.z=side*.19;
+        oval(car,carTail,side*sideWidth*.64,tail*.73,half-.005,.19,.055,.056);
+        oval(car,carLamp,side*sideWidth*.63,tail*.74,half+.042,.072,.011,.013);
+        meshPart(car,unitBox,chassisTrim,side*sideWidth*.81,shoulder+.105,front+.155,.15,.052,.062);
+        oval(car,paint,side*sideWidth*.95,shoulder+.15,front+.16,.112,.053,.088);
+        meshPart(car,unitBox,alloyMaterial,side*sideWidth*.99,shoulder-.055,center+.11,.018,.024,.153);
+        meshPart(car,unitBox,chassisTrim,side*sideWidth*.97,sill+.035,0,.048,.09,length*.61);
+        for(const z of [-axle,axle]){
+          wheels.push(makeVehicleWheel(car,side*(sideWidth-.055),radius,z,side));
+          const arch=meshPart(car,wheelArch,chassisTrim,side*(sideWidth+.014),radius+.025,z,radius*1.09,radius*1.09,radius*1.09);
+          arch.rotation.y=Math.PI/2;
+        }
+      }
+      const shadow=meshPart(car,new THREE.CircleGeometry(1,24),
+        new THREE.MeshBasicMaterial({color:0x080d12,transparent:true,opacity:.32,depthWrite:false}),
+        0,.026,0,sideWidth*1.16,half*.96);
+      shadow.rotation.x=-Math.PI/2;
+      car.wheels=wheels;
+      car.wheelRadius=radius;
+      car.collider={ width: width+.24, length: length+.13 };
+      return car;
+    }
+
+    /* =========================================================================
+       6. RIDEABLE ROAD BIKE FACTORY (Matching Reference Image #2)
+       ========================================================================= */
+    function createRoadBike() {
+      const bike = new THREE.Group();
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.6, roughness: 0.4 }); // Matte black
+      const barTapeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 });
+
+      // 1. Two 700c Thin Road Wheels
+      const tireGeo = new THREE.TorusGeometry(0.42, 0.028, 12, 32);
+      const wFront = new THREE.Mesh(tireGeo, tireMaterial);
+      wFront.position.set(0, 0.42, -0.62);
+      bike.add(wFront);
+
+      const wRear = new THREE.Mesh(tireGeo, tireMaterial);
+      wRear.position.set(0, 0.42, 0.62);
+      bike.add(wRear);
+
+      // Spokes & Hubs
+      [-0.62, 0.62].forEach(wz => {
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.12, 12), alloyMaterial);
+        hub.rotation.z = Math.PI / 2;
+        hub.position.set(0, 0.42, wz);
+        bike.add(hub);
+      });
+
+      // 2. Diamond Frame Tubes
+      // Seat Tube
+      const seatTube = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.58, 8), frameMat);
+      seatTube.position.set(0, 0.65, 0.16);
+      seatTube.rotation.x = -0.25;
+      bike.add(seatTube);
+
+      // Top Tube
+      const topTube = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.72, 8), frameMat);
+      topTube.position.set(0, 0.90, -0.15);
+      topTube.rotation.x = Math.PI / 2;
+      bike.add(topTube);
+
+      // Down Tube
+      const downTube = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.78, 8), frameMat);
+      downTube.position.set(0, 0.65, -0.22);
+      downTube.rotation.x = 0.58;
+      bike.add(downTube);
+
+      // Chain Stays & Seat Stays
+      const staysR = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.55, 8), frameMat);
+      staysR.position.set(0, 0.66, 0.42);
+      staysR.rotation.x = -0.58;
+      bike.add(staysR);
+
+      // Fork
+      const fork = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.54, 8), frameMat);
+      fork.position.set(0, 0.64, -0.54);
+      fork.rotation.x = 0.32;
+      bike.add(fork);
+
+      // 3. Curved Drop Handlebars (Matching Image #2)
+      const barGroup = new THREE.Group();
+      barGroup.position.set(0, 0.96, -0.52);
+
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.12, 8), frameMat);
+      stem.rotation.x = Math.PI / 2;
+      barGroup.add(stem);
+
+      const topBar = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.38, 8), barTapeMat);
+      topBar.rotation.z = Math.PI / 2;
+      topBar.position.z = -0.06;
+      barGroup.add(topBar);
+
+      // Drop Curves
+      [-0.19, 0.19].forEach(bx => {
+        const dropCurve = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.014, 8, 16, Math.PI * 0.8), barTapeMat);
+        dropCurve.position.set(bx, -0.07, -0.08);
+        dropCurve.rotation.y = Math.PI / 2;
+        barGroup.add(dropCurve);
+      });
+      bike.add(barGroup);
+
+      // 4. Saddle on Seatpost
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.18, 8), alloyMaterial);
+      post.position.set(0, 0.94, 0.22);
+      bike.add(post);
+
+      const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.04, 0.28), frameMat);
+      saddle.position.set(0, 1.02, 0.20);
+      bike.add(saddle);
+
+      // Crank & Pedals
+      const crank = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.02, 16), alloyMaterial);
+      crank.rotation.z = Math.PI / 2;
+      crank.position.set(0, 0.38, 0.12);
+      bike.add(crank);
+
+      bike.wFront = wFront;
+      bike.wRear = wRear;
+      return bike;
+    }
+
+    /* =========================================================================
+       7. 3D RPG WORLD BUILDER (ENTERABLE BUILDINGS, STAIRS, CARS & BIKE)
+       ========================================================================= */
+    const rpgWorldGroup = new THREE.Group();
+    scene.add(rpgWorldGroup);
+
+    const npcs = [];
+    const vehicles = [];
+    let junctionAxis = null;
+    const collidableObstacles = []; // Static colliders for people-object collisions
+    const stairClimbers = []; // Stepped vertical elevation surfaces
+
+    let roadBikeMesh = null;
+    let isRidingBike = false;
+    let bikeVelocity = 0;
+    let natatoriumPos = new THREE.Vector3();
+
+    const venuePlaques=new Map();
+    const vaultedRoofGeometry=new THREE.SphereGeometry(1,40,18,0,Math.PI*2,0,Math.PI/2);
+    function venuePlaque(text) {
+      if(venuePlaques.has(text))return venuePlaques.get(text);
+      const image=document.createElement('canvas');image.width=768;image.height=96;
+      const ctx=image.getContext('2d');
+      ctx.fillStyle='#172d39';ctx.fillRect(0,0,768,96);
+      ctx.fillStyle='#94bdbf';ctx.fillRect(4,4,760,2);ctx.fillRect(4,90,760,2);
+      ctx.fillStyle='#f3f0dc';ctx.font='700 43px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(text,384,49,725);
+      const map=new THREE.CanvasTexture(image);map.encoding=THREE.sRGBEncoding;
+      const material=new THREE.MeshBasicMaterial({map});
+      venuePlaques.set(text,material);return material;
+    }
+    const plaquePlane=new THREE.PlaneGeometry(1,1);
+
+    function build3DCampusWorld(town,preview=null) {
+      const world=preview||rpgWorldGroup;
+      const obstacles=preview?[]:collidableObstacles;
+      const stairs=preview?[]:stairClimbers;
+      const poolAt=preview?new THREE.Vector3():natatoriumPos;
+      if(!preview){
+      while(rpgWorldGroup.children.length > 0) {
+        rpgWorldGroup.remove(rpgWorldGroup.children[0]);
+      }
+      npcs.length = 0;
+      vehicles.length = 0;
+      junctionAxis = null;
+      collidableObstacles.length = 0;
+      stairClimbers.length = 0;
+      }
+
+      const size = town.size;
+
+      // 1. Campus Ground Plane
+      const groundGeo = new THREE.PlaneGeometry(size, size);
+      let groundColor = 0x243444;
+      if (town.theme === 'stanford' || town.theme === 'ucla') groundColor = 0x2b5424;
+      if (town.theme === 'recco' || town.theme === 'barcelona') groundColor = 0x2b3844;
+      if (town.theme === 'dubrovnik' || town.theme === 'kotor') groundColor = 0x3d3f44;
+
+      const groundMat = new THREE.MeshStandardMaterial({ color: groundColor, roughness: 0.85 });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      world.add(ground);
+
+      // 2. Road Network Grid
+      const roadMat = new THREE.MeshStandardMaterial({ color: 0x181c22, roughness: 0.7 });
+      const roadH = new THREE.Mesh(new THREE.PlaneGeometry(size, 8.5), roadMat);
+      roadH.rotation.x = -Math.PI / 2;
+      roadH.position.set(0, 0.02, 0);
+      world.add(roadH);
+
+      const roadV = new THREE.Mesh(new THREE.PlaneGeometry(8.5, size), roadMat);
+      roadV.rotation.x = -Math.PI / 2;
+      roadV.position.set(0, 0.02, 0);
+      world.add(roadV);
+      for (let marker=-size/2+2;marker<size/2-1;marker+=3.9) {
+        if (Math.abs(marker)<5) continue;
+        meshPart(world,unitBox,surface(0xd9cf9e),marker,.028,0,1.55,.012,.075);
+        meshPart(world,unitBox,surface(0xd9cf9e),0,.028,marker,.075,.012,1.55);
+      }
+
+      // 3. ENTERABLE BUILDING 1: ATHLETIC STUDENT UNION & GYM (WITH CLIMBABLE STAIRS)
+      const bldgMat1 = new THREE.MeshStandardMaterial({ color: 0xc8b29b, roughness: 0.6 });
+      const floorMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f, roughness: 0.4 }); // Hardwood gym floor
+
+      const gymX = size * 0.22;
+      const gymZ = size * 0.22;
+      const gymW = 16;
+      const gymD = 18;
+      const gymH = 8;
+
+      const gymGroup = new THREE.Group();
+      gymGroup.position.set(gymX, 0, gymZ);
+
+      // Floor
+      const gymFloor = new THREE.Mesh(new THREE.BoxGeometry(gymW, 0.2, gymD), floorMat);
+      gymFloor.position.y = 0.1;
+      gymGroup.add(gymFloor);
+
+      // Outer Walls with Wide Open Double Entrance Doors
+      const campusWallColors=[0xb98460,0xab9583,0xb99773,0xb9a48b,0xc0a382,0xa89483,0xbb9376,0xb6ac91,0xa2755c,0xb39f85];
+      const wallMat=surface(campusWallColors[town.id-1]);
+      const frames=surface(0x7e786e), windows=surface(0x3a6070,.36);
+      // Back Wall
+      const backWall = new THREE.Mesh(new THREE.BoxGeometry(gymW, gymH, 0.6), wallMat);
+      backWall.position.set(0, gymH/2, gymD/2);
+      gymGroup.add(backWall);
+      obstacles.push({ type: 'box', minX: gymX - gymW/2, maxX: gymX + gymW/2, minZ: gymZ + gymD/2 - 0.5, maxZ: gymZ + gymD/2 + 0.5 });
+
+      // Left Wall
+      const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.6, gymH, gymD), wallMat);
+      leftWall.position.set(-gymW/2, gymH/2, 0);
+      gymGroup.add(leftWall);
+      obstacles.push({ type: 'box', minX: gymX - gymW/2 - 0.5, maxX: gymX - gymW/2 + 0.5, minZ: gymZ - gymD/2, maxZ: gymZ + gymD/2 });
+
+      // Right Wall
+      const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.6, gymH, gymD), wallMat);
+      rightWall.position.set(gymW/2, gymH/2, 0);
+      gymGroup.add(rightWall);
+      obstacles.push({ type: 'box', minX: gymX + gymW/2 - 0.5, maxX: gymX + gymW/2 + 0.5, minZ: gymZ - gymD/2, maxZ: gymZ + gymD/2 });
+
+      // Front Wall with Open Entry Doorway (Width 4.5m)
+      const frontWallL = new THREE.Mesh(new THREE.BoxGeometry((gymW - 4.5)/2, gymH, 0.6), wallMat);
+      frontWallL.position.set(-gymW/4 - 1.1, gymH/2, -gymD/2);
+      gymGroup.add(frontWallL);
+      obstacles.push({ type: 'box', minX: gymX - gymW/2, maxX: gymX - 2.25, minZ: gymZ - gymD/2 - 0.5, maxZ: gymZ - gymD/2 + 0.5 });
+
+      const frontWallR = new THREE.Mesh(new THREE.BoxGeometry((gymW - 4.5)/2, gymH, 0.6), wallMat);
+      frontWallR.position.set(gymW/4 + 1.1, gymH/2, -gymD/2);
+      gymGroup.add(frontWallR);
+      obstacles.push({ type: 'box', minX: gymX + 2.25, maxX: gymX + gymW/2, minZ: gymZ - gymD/2 - 0.5, maxZ: gymZ - gymD/2 + 0.5 });
+
+      // Header above door
+      const doorHeader = new THREE.Mesh(new THREE.BoxGeometry(4.5, gymH - 3.2, 0.6), wallMat);
+      doorHeader.position.set(0, gymH - (gymH - 3.2)/2, -gymD/2);
+      gymGroup.add(doorHeader);
+
+      meshPart(gymGroup,unitBox,frames,0,3.2,-gymD/2-.47,5.35,.18,1.35);
+      meshPart(gymGroup,plaquePlane,venuePlaque('ATHLETIC CENTER'),0,3.83,-gymD/2-.34,6.9,.7,1).rotation.y=Math.PI;
+      for(const side of [-1,1]) {
+        for(const x of [3.7,6.1]) {
+          meshPart(gymGroup,unitBox,frames,side*x,2.15,-gymD/2-.34,1.64,2.28,.14);
+          meshPart(gymGroup,unitBox,windows,side*x,2.16,-gymD/2-.423,1.43,2.06,.042);
+          meshPart(gymGroup,unitBox,frames,side*x,2.15,-gymD/2-.454,.07,2.1,.045);
+        }
+        for(const z of [-6,-3,0,3,6]){
+          meshPart(gymGroup,unitBox,frames,side*(gymW/2+.34),5.22,z,.14,1.8,2.24);
+          meshPart(gymGroup,unitBox,windows,side*(gymW/2+.43),5.22,z,.06,1.59,2.05);
+          meshPart(gymGroup,unitBox,frames,side*(gymW/2+.48),5.23,z,.055,1.62,.065);
+        }
+      }
+      meshPart(gymGroup,unitBox,frames,0,gymH-.16,-gymD/2-.38,16.25,.24,.19);
+      meshPart(gymGroup,unitBox,frames,0,1.02,-gymD/2-.35,15.9,.09,.19);
+
+      // 4. CLIMBABLE 3D STAIRCASE LEADING TO 2ND-FLOOR MEZZANINE
+      const stairSteps = 10;
+      const stepH = 0.28;
+      const stepD = 0.50;
+      const stepW = 3.2;
+      const stairBaseX = 3.8;
+      const stairBaseZ = -2.5;
+
+      const stairMat = new THREE.MeshStandardMaterial({ color: 0x998877, roughness: 0.5 });
+      for (let s = 0; s < stairSteps; s++) {
+        const step = new THREE.Mesh(new THREE.BoxGeometry(stepW, stepH * (s + 1), stepD), stairMat);
+        step.position.set(stairBaseX, (stepH * (s + 1)) / 2, stairBaseZ + s * stepD);
+        gymGroup.add(step);
+      }
+
+      // 2nd-Floor Mezzanine Platform
+      const mezzHeight = stairSteps * stepH; // ~2.8m high
+      const mezzD = 6.5;
+      const mezz = new THREE.Mesh(new THREE.BoxGeometry(gymW - 1.2, 0.3, mezzD), floorMat);
+      mezz.position.set(0, mezzHeight - 0.15, gymD/2 - mezzD/2);
+      gymGroup.add(mezz);
+
+      // Mezzanine Railing
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(gymW - 1.2, 0.8, 0.1), new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8 }));
+      rail.position.set(0, mezzHeight + 0.4, gymD/2 - mezzD);
+      gymGroup.add(rail);
+
+      // Register Stair Climber Volume for Vertical Physics
+      stairs.push({
+        minX: gymX + stairBaseX - stepW/2,
+        maxX: gymX + stairBaseX + stepW/2,
+        startZ: gymZ + stairBaseZ - stepD/2,
+        endZ: gymZ + stairBaseZ + stairSteps * stepD,
+        baseY: 0,
+        topY: mezzHeight,
+        mezzMinX: gymX - (gymW - 1.2)/2,
+        mezzMaxX: gymX + (gymW - 1.2)/2,
+        mezzMinZ: gymZ + gymD/2 - mezzD,
+        mezzMaxZ: gymZ + gymD/2
+      });
+
+      world.add(gymGroup);
+
+      // 5. ENTERABLE BUILDING 2: CHAMPIONSHIP NATATORIUM (QUEST TRANSITION)
+      const poolBldg = new THREE.Group();
+      poolAt.set(-size * 0.22, 0, -size * 0.22);
+      poolBldg.position.copy(poolAt);
+
+      const façadeColors=[0xbc9a73,0xc6b38e,0xb97958,0xb8a781,0xcca877,0xa8b8ac,0xd1b18b,0xc4c4aa,0xaa785f,0xbc9c7f];
+      const stone=surface(façadeColors[town.id-1]), glass=surface(0x315665,.32);
+      const metal=surface(0x273d48,.47), trim=surface(0xe1d3ac,.63);
+      const y=4;
+      meshPart(poolBldg,unitBox,stone,0,y*.5,0,15.8,y,15.4);
+      const waterfront=['recco','barcelona','piraeus','marseille'].includes(town.theme);
+      const arcade=['stanford','ucla','kotor','dubrovnik'].includes(town.theme);
+      const roofFinish=waterfront?surface(0x365f67,.42):arcade?surface(0x874e3e,.56):metal;
+      meshPart(poolBldg,unitBox,roofFinish,0,y+.03,0,16.25,.22,15.82);
+      if(waterfront){
+        meshPart(poolBldg,unitBox,roofFinish,0,y+.34,0,14.8,.64,14.2);
+        for(const side of [-1,1])meshPart(poolBldg,unitBox,trim,side*7.22,y+.67,0,.16,.15,13.8);
+      }else{
+        meshPart(poolBldg,vaultedRoofGeometry,roofFinish,0,y+.12,0,7.75,arcade?1.55:2.23,7.5);
+      }
+      for(let x=-6.6;x<=6.7;x+=2.2) {
+        meshPart(poolBldg,unitBox,glass,x,3.13,7.73,1.78,.92,.16);
+        if(Math.abs(x)>2){
+          meshPart(poolBldg,unitBox,glass,x,2.2,-7.74,1.76,2.30,.14);
+          meshPart(poolBldg,unitBox,trim,x,.81,-7.9,1.81,.12,.17);
+        }
+      }
+      for(const side of [-1,1])for(let z=-5.7;z<=6;z+=2.3){
+        meshPart(poolBldg,unitBox,glass,side*7.93,2.54,z,.14,1.83,1.82);
+        meshPart(poolBldg,unitBox,trim,side*7.97,1.58,z,.16,.10,1.88);
+      }
+      meshPart(poolBldg,unitBox,metal,0,2.83,8.31,5.5,.14,1.26);
+      meshPart(poolBldg,unitBox,glass,0,1.35,7.76,4.31,2.63,.14);
+      meshPart(poolBldg,unitBox,trim,0,1.35,7.86,.099,2.64,.10);
+      for(const side of [-1,1]){
+        meshPart(poolBldg,unitBox,metal,side*2.55,1.43,8.79,.13,2.78,.16);
+        meshPart(poolBldg,unitBox,trim,side*.24,1.34,7.89,.14,.052,.10);
+      }
+      meshPart(poolBldg,unitBox,trim,0,.043,8.8,7.1,.079,2.60);
+      meshPart(poolBldg,unitBox,metal,0,2.83,-8.24,4.76,.13,1.14);
+      meshPart(poolBldg,unitBox,glass,0,1.27,-7.82,3.04,2.54,.24);
+      meshPart(poolBldg,unitBox,trim,0,1.28,-7.97,.081,2.55,.072);
+      meshPart(poolBldg,unitBox,trim,0,.037,-8.75,5.65,.072,2.55);
+      for(const side of [-1,1]){
+        meshPart(poolBldg,unitBox,metal,side*2.14,1.38,-8.62,.13,2.67,.14);
+        oval(poolBldg,surface(0x567663),side*3.52,.51,-8.62,.50,.60,.52);
+        oval(poolBldg,surface(0x577c67),side*4.1,.50,8.83,.52,.60,.49);
+      }
+      meshPart(poolBldg,plaquePlane,venuePlaque('AQUATICS'),0,3.49,7.91,4.8,.56,1);
+      const loadingMark=meshPart(poolBldg,plaquePlane,venuePlaque('REAR ENTRANCE'),0,3.30,-7.90,4.24,.51,1);
+      loadingMark.rotation.y=Math.PI;
+      for(const side of [-1,1]){
+        meshPart(poolBldg,unitBox,trim,side*2.41,2.02,7.89,.095,.60,.11);
+        meshPart(poolBldg,unitBox,metal,side*4.67,.44,9.04,1.9,.13,.49);
+        meshPart(poolBldg,unitBox,trim,side*4.67,.65,8.82,1.90,.11,.08);
+      }
+
+      world.add(poolBldg);
+      obstacles.push({ type: 'cylinder', x: poolAt.x, z: poolAt.z, radius: 8.5 });
+
+      // 6. RIDEABLE ROAD BICYCLE (Matching Reference Image #2)
+      const bike=createRoadBike();
+      bike.position.set(gymX-5.5,0,gymZ-6.5);
+      bike.rotation.y=Math.PI/4;
+      world.add(bike);
+      if(!preview)roadBikeMesh=bike;
+
+      // 7. ALL 15 CAR BODY TYPES FROM REFERENCE IMAGE #1
+      // Distribute cars along parking bays and roads
+      const carPalette = [0x111111, 0xffffff, 0x1a4fb0, 0xcc2222, 0x8a929e, 0xc49b45, 0x5a2d82, 0x228844];
+      const carBaySpacing = 5.2;
+
+      CAR_TYPES.forEach((type, idx) => {
+        if(preview && idx>4)return;
+        const carColor = carPalette[idx % carPalette.length];
+        const car = createCarModel(type, carColor);
+
+        if (idx < 8) {
+          // Two parking banks leave the central road and spawn route clear.
+          const bank = idx < 4 ? -1 : 1;
+          car.position.set(bank*(5.7+(idx%4)*3.1),0,5.9);
+        } else {
+          const horizontal = idx%2 === 0;
+          const direction = idx%4 < 2 ? 1 : -1;
+          const lane = direction*(horizontal ? -2.1 : 2.1);
+          const offsets = [-.40,-.28,.18,.27,-.22,.42,.41];
+          const offset = offsets[idx-8]*size;
+          car.position.set(horizontal ? offset : lane,.024,horizontal ? lane : offset);
+          car.rotation.y = horizontal ? -direction*Math.PI/2 : direction>0 ? Math.PI : 0;
+          car.traffic = { axis:horizontal?'x':'z', direction, speed:0, cruise:4.8+(idx%3)*1.25 };
+        }
+        if(!preview)vehicles.push(car);
+        world.add(car);
+      });
+
+      // 8. FULLY CLOTHED 3D NPCS (WITH FULL FACIAL FEATURES & LIMBS)
+      const npcCount = preview?0:Math.floor(size/3.8);
+      const skinColors = [0xdfa783, 0xc68b59, 0xeac096, 0x8d5524, 0xf1c27d, 0x5c3818];
+      const hairColors = [0xe8e8ea, 0x3a271d, 0xdfb15b, 0x111111];
+      const jacketColors = [0x144488, 0xcc3333, 0x228844, 0x333333, 0xaa6600, 0x555555];
+      const pantsColors = [0x1c2433, 0x2e3540, 0x111111, 0x3a4b60];
+
+      for (let n = 0; n < npcCount; n++) {
+        const npcSkin = new THREE.MeshStandardMaterial({ color: skinColors[n % skinColors.length], roughness: 0.35 });
+        const npcHair = new THREE.MeshStandardMaterial({ color: hairColors[n % hairColors.length], roughness: 0.6 });
+        const npcJacket = new THREE.MeshStandardMaterial({ color: jacketColors[n % jacketColors.length], roughness: 0.5 });
+        const npcPants = new THREE.MeshStandardMaterial({ color: pantsColors[n % pantsColors.length], roughness: 0.7 });
+
+        const npc = createDetailedHumanoid(true, npcSkin, npcHair, npcJacket, npcPants);
+        npc.position.set((Math.random() - 0.5) * (size * 0.75), 0, (Math.random() - 0.5) * (size * 0.75));
+        npc.vx = (Math.random() - 0.5) * 1.6;
+        npc.vz = (Math.random() - 0.5) * 1.6;
+
+        world.add(npc);
+        npcs.push(npc);
+      }
+    }
+
+    /* =========================================================================
+       8. ATHLETE RIG INITIALIZATION (CLOTHED FOR RPG / SWIMWEAR FOR MATCH)
+       ========================================================================= */
+    const athleteRoot = new THREE.Group();
+    scene.add(athleteRoot);
+
+    let pUser = createDetailedHumanoid(true); // Fully clothed by default for campaign
+    athleteRoot.add(pUser);
+
+    function setReferencePose(ath) {
+      ath.rig.leftArm.rotation.set(0.18, 0, 0.78);
+      ath.rig.leftArm.fore.rotation.set(0, 0, 1.48);
+      ath.rig.rightArm.rotation.set(0.18, 0, -0.78);
+      ath.rig.rightArm.fore.rotation.set(0, 0, -1.48);
+    }
+
+    function resetPose(ath) {
+      ath.rig.leftArm.rotation.set(0, 0, 0);
+      ath.rig.leftArm.fore.rotation.set(0, 0, 0);
+      ath.rig.rightArm.rotation.set(0, 0, 0);
+      ath.rig.rightArm.fore.rotation.set(0, 0, 0);
+      ath.rig.leftLeg.rotation.set(0, 0, 0);
+      ath.rig.rightLeg.rotation.set(0, 0, 0);
+    }
+
+    /* =========================================================================
+       9. 3D OLYMPIC POOL, 14 ATHLETES & MULTI-BODY COLLISION PHYSICS
+       ========================================================================= */
+    const POOL_WIDTH = 20;
+    const POOL_LENGTH = 30;
+    const WATER_SURFACE_Y = 0.7;
+
+    const waterGeo = new THREE.PlaneGeometry(POOL_WIDTH, POOL_LENGTH, 64, 64);
+    const waterMat = new THREE.MeshStandardMaterial({
+      color: 0x19708b,
+      roughness: 0.33,
+      metalness: 0.08,
+      transparent: true,
+      opacity: 0.94
+    });
+    const waterMesh = new THREE.Mesh(waterGeo, waterMat);
+    waterMesh.rotation.x = -Math.PI / 2;
+    waterMesh.position.set(0, WATER_SURFACE_Y, 0);
+    waterMesh.visible = false;
+    scene.add(waterMesh);
+    const poolDeck = new THREE.Group();
+    scene.add(poolDeck);
+    const deckFinish = surface(0x718389);
+    const poolTile = surface(0x438998);
+    const coping = surface(0xd8dcda);
+    const matchPoolFloor=-1.18;
+    meshPart(poolDeck,unitBox,poolTile,0,matchPoolFloor-.05,0,20,.1,30);
+    for (const side of [-1,1]) {
+      const wallHeight=WATER_SURFACE_Y-matchPoolFloor, wallCenter=matchPoolFloor+wallHeight/2;
+      meshPart(poolDeck,unitBox,poolTile,side*10.04,wallCenter,0,.085,wallHeight,30);
+      meshPart(poolDeck,unitBox,poolTile,0,wallCenter,side*15.04,20,wallHeight,.085);
+      meshPart(poolDeck,unitBox,deckFinish,side*12,.61,0,4,.2,36);
+      meshPart(poolDeck,unitBox,deckFinish,0,.61,side*17.2,28,.2,4.4);
+      meshPart(poolDeck,unitBox,coping,side*10.1,.72,0,.2,.075,30);
+      meshPart(poolDeck,unitBox,coping,0,.72,side*15.1,20.4,.075,.2);
+      for (let z=-14; z<15; z+=2) meshPart(poolDeck,unitBox,surface(0x4a5e65),side*12,.715,z,3.6,.01,.025);
+    }
+    for (let lane=-4; lane<=4; lane++) {
+      meshPart(poolDeck,unitBox,surface(0x183e65),lane*2,matchPoolFloor+.009,0,.13,.013,28);
+    }
+
+    // Goal Cage
+    const postMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.4 });
+    const northGoal = { zPos: -14.5 };
+    const cage = new THREE.Group();
+    cage.position.set(0, WATER_SURFACE_Y, northGoal.zPos);
+    const postGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.35, 16);
+    const lp = new THREE.Mesh(postGeo, postMat);
+    lp.position.set(-1.5, 0.675, 0);
+    cage.add(lp);
+    const rp = lp.clone();
+    rp.position.x = 1.5;
+    cage.add(rp);
+    const crossbar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.10, 16), postMat);
+    crossbar.rotation.z = Math.PI / 2;
+    crossbar.position.set(0, 1.35, 0);
+    cage.add(crossbar);
+    cage.visible = false;
+    scene.add(cage);
+    const netMaterial = surface(0xb2c5c8);
+    for (let column=-6; column<=6; column++) {
+      meshPart(cage, unitBox, netMaterial, column*.223,.67,-.52,.012,1.33,.012);
+    }
+    for (let row=1; row<=6; row++) {
+      meshPart(cage, unitBox, netMaterial,0,row*.19,-.52,2.96,.012,.012);
+    }
+    const southCage = cage.clone();
+    southCage.rotation.y = Math.PI;
+    southCage.position.z *= -1;
+    scene.add(southCage);
+
+    // Ball
+    const ballRadius = 0.13;
+    const swimHeight = WATER_SURFACE_Y - 1.31;
+    const handBallOffset = new THREE.Vector3();
+    const ballMesh = new THREE.Mesh(new THREE.SphereGeometry(ballRadius, 24, 24), new THREE.MeshStandardMaterial({ color: 0xffd000, roughness: 0.35 }));
+    ballMesh.visible = false;
+    scene.add(ballMesh);
+
+    const ballBody = { x: 0, y: 1.0, z: -2, vx: 0, vy: 0, vz: 0, radius: ballRadius, heldBy: null, isDribbling: false, isSkip: false };
+
+    // 14 Athletes in Pool (7 HUN in Blue Caps + 7 ITA in White Caps)
+    const matchPlayers = [];
+    function createMatchPlayer(team, num, posName, x, z, isGK = false) {
+      const athlete = createDetailedHumanoid(false,
+        surface([0xbc8566,0xe2af8b,0x93664e,0xb07957,0xd19a7b][(num + (team === 'ITA' ? 2 : 0)) % 5]),
+        null, null, null, {team, number: num, goalie: isGK, iris: num % 2 ? 0x53685e : 0x583d2f});
+      athlete.position.set(x, swimHeight, z);
+      athlete.rotation.y = team === 'ITA' ? 0 : Math.PI;
+      scene.add(athlete);
+      const pData = {
+        mesh: athlete, team, num, posName, isGK,
+        baseX: x, baseZ: z,
+        radius: 0.45,
+        isExcluded: false,
+        rig: athlete.rig
+      };
+      return pData;
+    }
+
+    const pUserMatch = createMatchPlayer('HUN', 9, 'Center-Forward', 0, -3.2, false);
+    const pHunGK = createMatchPlayer('HUN', 1, 'Goalkeeper', 0, 14.2, true);
+    matchPlayers.push(pUserMatch, pHunGK);
+    matchPlayers.push(createMatchPlayer('HUN', 2, 'Wing', -6.5, -4.5, false));
+    matchPlayers.push(createMatchPlayer('HUN', 3, 'Flat', -4.2, -7.0, false));
+    matchPlayers.push(createMatchPlayer('HUN', 4, 'Point', 0, -8.5, false));
+    matchPlayers.push(createMatchPlayer('HUN', 5, 'Flat', 4.2, -7.0, false));
+    matchPlayers.push(createMatchPlayer('HUN', 6, 'Wing', 6.5, -4.5, false));
+
+    const pItaHoleD = createMatchPlayer('ITA', 4, 'Center-Defender', 0.1, -2.5, false);
+    const pItaGK = createMatchPlayer('ITA', 1, 'Goalkeeper', 0, -14.2, true);
+    matchPlayers.push(pItaHoleD, pItaGK);
+    matchPlayers.push(createMatchPlayer('ITA', 2, 'Perimeter', -6.0, -4.0, false));
+    matchPlayers.push(createMatchPlayer('ITA', 3, 'Perimeter', -3.8, -6.5, false));
+    matchPlayers.push(createMatchPlayer('ITA', 5, 'Point Defender', 0, -8.0, false));
+    matchPlayers.push(createMatchPlayer('ITA', 6, 'Perimeter', 3.8, -6.5, false));
+    matchPlayers.push(createMatchPlayer('ITA', 7, 'Perimeter', 6.0, -4.0, false));
+
+    setReferencePose(pUserMatch.mesh);
+    ballBody.heldBy = pUserMatch;
+
+    /* =========================================================================
+       10. 3D STADIUM FANS & POOL DECK REFEREES
+       ========================================================================= */
+    const stadiumGroup = new THREE.Group();
+    scene.add(stadiumGroup);
+
+    const crowdFans = [];
+    const referees = [];
+
+    function buildStadiumCrowdAndRefs(venue = 'danube') {
+      while(stadiumGroup.children.length > 0) {
+        stadiumGroup.remove(stadiumGroup.children[0]);
+      }
+      crowdFans.length = 0;
+      referees.length = 0;
+
+      const standMat = surface(0x354857);
+      const fanColors = [0x376481, 0xe2dfd6, 0xa34b53, 0x527e75, 0xb18a55];
+      const fanSkin = [0xb88065, 0xdab195, 0x815740, 0xbf9477];
+      for (let tier = 0; tier < 8; tier++) {
+        const stepGeo = new THREE.BoxGeometry(36, 0.6, 1.2);
+        const leftStep = new THREE.Mesh(stepGeo, standMat);
+        leftStep.position.set(0, 1.2 + tier * 0.6, 20 + tier * 1.1);
+        stadiumGroup.add(leftStep);
+
+        const rightStep = new THREE.Mesh(stepGeo, standMat);
+        rightStep.position.set(0, 1.2 + tier * 0.6, -20 - tier * 1.1);
+        stadiumGroup.add(rightStep);
+
+        for (const end of [-1,1]) {
+          for (let seat=-7; seat<=7; seat++) {
+            if ((seat+2*tier)%11 === 0) continue;
+            const fan = joint(stadiumGroup,seat*2.15 + (tier%2)*.52,1.5+tier*.6,end*(20+tier*1.1));
+            fan.rotation.y = end > 0 ? Math.PI : 0;
+            const top = surface(fanColors[(seat+7+tier*3)%fanColors.length]);
+            const complexion = surface(fanSkin[(seat+7+tier)%fanSkin.length]);
+            oval(fan,top,0,.30,0,.192,.322,.135);
+            oval(fan,top,-.146,.43,.017,.074,.114,.08);
+            oval(fan,top,.146,.43,.017,.074,.114,.08);
+            oval(fan,complexion,0,.73,.029,.10,.136,.096);
+            oval(fan,surface((seat+tier)%3===0 ? 0x695143 : 0x252126),0,.79,.005,.106,.083,.096);
+            fan.animOffset = (seat+tier*4)*.73;
+            crowdFans.push(fan);
+          }
+        }
+      }
+
+      function spawnReferee(x, z) {
+        const ref = createDetailedHumanoid(true, surface(z > 0 ? 0xa66c4d : 0xd8a58d),
+          surface(z > 0 ? 0x373331 : 0x6c635e), surface(0xe7eaeb), surface(0x25333c), {official: true});
+        ref.position.set(x, 0.8, z);
+        ref.rotation.y = x > 0 ? -Math.PI/2 : Math.PI/2;
+        stadiumGroup.add(ref);
+        referees.push(ref);
+      }
+
+      spawnReferee(11.25, 2.5);
+      spawnReferee(-11.25, -2.5);
+      stadiumGroup.visible = false;
+    }
+    buildStadiumCrowdAndRefs('danube');
+
+    /* =========================================================================
+       11. COMPREHENSIVE MULTI-BODY COLLISION PHYSICS RESOLVER (CAMPAIGN & MATCH)
+       ========================================================================= */
+    function carHalfSize(car,axis) {
+      const runsAlong = (car.traffic?.axis || 'z') === axis;
+      return (runsAlong ? car.collider.length : car.collider.width)*.5;
+    }
+
+    function carOverlap(a,b,x,z,padding=.08) {
+      return Math.abs(x-b.position.x)<carHalfSize(a,'x')+carHalfSize(b,'x')+padding &&
+        Math.abs(z-b.position.z)<carHalfSize(a,'z')+carHalfSize(b,'z')+padding;
+    }
+
+    function separatePersonFromCar(pos,radius,car) {
+      const dx=pos.x-car.position.x, dz=pos.z-car.position.z;
+      const pushX=carHalfSize(car,'x')+radius-Math.abs(dx);
+      const pushZ=carHalfSize(car,'z')+radius-Math.abs(dz);
+      if(pushX<=0||pushZ<=0) return;
+      if(pushX<pushZ) pos.x+=(Math.sign(dx)||1)*pushX;
+      else pos.z+=(Math.sign(dz)||1)*pushZ;
+    }
+
+    function advanceTraffic(delta) {
+      const moving=vehicles.filter(car=>car.traffic);
+      const junctionDistance=car=>Math.abs(car.position[car.traffic.axis])-carHalfSize(car,car.traffic.axis);
+      const inside=moving.filter(car=>junctionDistance(car)<3.65);
+      if (!inside.some(car=>car.traffic.axis===junctionAxis)) {
+        const next=(inside.length ? inside : moving.filter(car=>
+          car.position[car.traffic.axis]*car.traffic.direction<0 && junctionDistance(car)<6))
+          .sort((a,b)=>junctionDistance(a)-junctionDistance(b))[0];
+        junctionAxis=next?.traffic.axis || null;
+      }
+      const bound=currentTown.size*.49;
+      for(const car of moving){
+        const {axis,direction,cruise}=car.traffic;
+        const cross=axis==='x'?'z':'x';
+        const front=carHalfSize(car,axis);
+        const position=car.position[axis];
+        const proposedSpeed=Math.min(cruise,car.traffic.speed+delta*3.8);
+        let step=proposedSpeed*delta;
+        if (junctionAxis!==axis && position*direction < 0 && junctionDistance(car)>=3.65) {
+          step=Math.min(step,Math.max(0,junctionDistance(car)-3.67));
+        }
+        for(const other of vehicles){
+          if(other===car || Math.abs(car.position[cross]-other.position[cross])>=carHalfSize(car,cross)+carHalfSize(other,cross)+.09) continue;
+          const ahead=(other.position[axis]-position)*direction;
+          if(ahead<=0) continue;
+          const gap=ahead-front-carHalfSize(other,axis)-.12;
+          step=Math.min(step,Math.max(0,gap));
+        }
+        let destination=position+direction*step;
+        let wrap=false;
+        if(destination*direction>bound){
+          const entry=-direction*bound;
+          const x=axis==='x'?entry:car.position.x;
+          const z=axis==='z'?entry:car.position.z;
+          wrap=!vehicles.some(other=>other!==car&&carOverlap(car,other,x,z,.35));
+          destination=wrap?entry:position;
+        }
+        car.position[axis]=destination;
+        car.traffic.speed=wrap?proposedSpeed:(delta>0?Math.abs(destination-position)/delta:0);
+        for(const wheel of car.wheels) wheel.rotation.x+=car.traffic.speed*delta/car.wheelRadius;
+      }
+    }
+
+    function resolveCampaignCollisions() {
+      if (activeScreen !== 'view-rpg-campaign') return;
+      const playerPos = athleteRoot.position;
+      const playerRadius = 0.45;
+
+      // 1. People vs People: Player vs NPCs
+      npcs.forEach(npc => {
+        const dx = npc.position.x - playerPos.x;
+        const dz = npc.position.z - playerPos.z;
+        const dist = Math.hypot(dx, dz);
+        const minDist = playerRadius + npc.radius;
+        if (dist < minDist && dist > 0.001) {
+          const nx = dx / dist;
+          const nz = dz / dist;
+          const overlap = minDist - dist;
+          playerPos.x -= nx * overlap * 0.5;
+          playerPos.z -= nz * overlap * 0.5;
+          npc.position.x += nx * overlap * 0.5;
+          npc.position.z += nz * overlap * 0.5;
+        }
+      });
+
+      // 2. People vs People: NPC vs NPC
+      for (let i = 0; i < npcs.length; i++) {
+        for (let j = i + 1; j < npcs.length; j++) {
+          const n1 = npcs[i];
+          const n2 = npcs[j];
+          const dx = n2.position.x - n1.position.x;
+          const dz = n2.position.z - n1.position.z;
+          const dist = Math.hypot(dx, dz);
+          const minDist = n1.radius + n2.radius;
+          if (dist < minDist && dist > 0.001) {
+            const nx = dx / dist;
+            const nz = dz / dist;
+            const overlap = minDist - dist;
+            n1.position.x -= nx * overlap * 0.5;
+            n1.position.z -= nz * overlap * 0.5;
+            n2.position.x += nx * overlap * 0.5;
+            n2.position.z += nz * overlap * 0.5;
+          }
+        }
+      }
+
+      // 3. People vs Objects: Building Walls, Pillars, Parked Vehicles
+      collidableObstacles.forEach(obs => {
+        if (obs.type === 'box') {
+          // Bounding Box Collision
+          if (playerPos.x > obs.minX - playerRadius && playerPos.x < obs.maxX + playerRadius &&
+              playerPos.z > obs.minZ - playerRadius && playerPos.z < obs.maxZ + playerRadius) {
+            const dLeft = Math.abs(playerPos.x - (obs.minX - playerRadius));
+            const dRight = Math.abs(playerPos.x - (obs.maxX + playerRadius));
+            const dFront = Math.abs(playerPos.z - (obs.minZ - playerRadius));
+            const dBack = Math.abs(playerPos.z - (obs.maxZ + playerRadius));
+            const minD = Math.min(dLeft, dRight, dFront, dBack);
+
+            if (minD === dLeft) playerPos.x = obs.minX - playerRadius;
+            else if (minD === dRight) playerPos.x = obs.maxX + playerRadius;
+            else if (minD === dFront) playerPos.z = obs.minZ - playerRadius;
+            else playerPos.z = obs.maxZ + playerRadius;
+          }
+        } else if (obs.type === 'cylinder') {
+          const dx = playerPos.x - obs.x;
+          const dz = playerPos.z - obs.z;
+          const dist = Math.hypot(dx, dz);
+          const minDist = playerRadius + obs.radius;
+          if (dist < minDist && dist > 0.001) {
+            playerPos.x = obs.x + (dx / dist) * minDist;
+            playerPos.z = obs.z + (dz / dist) * minDist;
+          }
+        }
+      });
+
+      for (const car of vehicles) {
+        if (playerPos.y < .8) separatePersonFromCar(playerPos,playerRadius,car);
+        for (const npc of npcs) separatePersonFromCar(npc.position,npc.radius,car);
+      }
+
+      // 5. Vertical Stair Climbing Physics (Smooth 3D Stair Ascension)
+      let targetY = 0;
+      stairClimbers.forEach(sc => {
+        // Check if on staircase incline
+        if (playerPos.x >= sc.minX && playerPos.x <= sc.maxX &&
+            playerPos.z >= sc.startZ && playerPos.z <= sc.endZ) {
+          const progress = (playerPos.z - sc.startZ) / (sc.endZ - sc.startZ);
+          targetY = sc.baseY + progress * sc.topY;
+        }
+        // Check if on 2nd-floor mezzanine platform
+        else if (playerPos.x >= sc.mezzMinX && playerPos.x <= sc.mezzMaxX &&
+                 playerPos.z >= sc.mezzMinZ && playerPos.z <= sc.mezzMaxZ) {
+          targetY = sc.topY;
+        }
+      });
+
+      playerPos.y += (targetY - playerPos.y) * 0.25;
+
+      // Campus Boundaries
+      const bound = currentTown.size * 0.48;
+      playerPos.x = Math.max(-bound, Math.min(bound, playerPos.x));
+      playerPos.z = Math.max(-bound, Math.min(bound, playerPos.z));
+    }
+
+    function resolveMatchCollisions(delta) {
+      if (!waterMesh.visible) return;
+
+      // 1. People vs People Collision (Continuous contact repulsion)
+      for (let i = 0; i < matchPlayers.length; i++) {
+        for (let j = i + 1; j < matchPlayers.length; j++) {
+          const p1 = matchPlayers[i];
+          const p2 = matchPlayers[j];
+          if (p1.isExcluded || p2.isExcluded) continue;
+
+          const dx = p2.mesh.position.x - p1.mesh.position.x;
+          const dz = p2.mesh.position.z - p1.mesh.position.z;
+          const dist = Math.hypot(dx, dz);
+          const minDist = p1.radius + p2.radius;
+
+          if (dist < minDist && dist > 0.001) {
+            const nx = dx / dist;
+            const nz = dz / dist;
+            const overlap = minDist - dist;
+            p1.mesh.position.x -= nx * overlap * 0.5;
+            p1.mesh.position.z -= nz * overlap * 0.5;
+            p2.mesh.position.x += nx * overlap * 0.5;
+            p2.mesh.position.z += nz * overlap * 0.5;
+          }
+        }
+      }
+
+      // 2. People vs Objects (Pool Boundaries)
+      matchPlayers.forEach(p => {
+        p.mesh.position.x = Math.max(-9.2, Math.min(9.2, p.mesh.position.x));
+        p.mesh.position.z = Math.max(-14.2, Math.min(14.2, p.mesh.position.z));
+      });
+
+      // 3. Object vs Object & Ball vs Objects
+      if (ballBody.heldBy) {
+        const holder = ballBody.heldBy;
+        if (ballBody.isDribbling) {
+          ballBody.x = holder.mesh.position.x;
+          ballBody.y = WATER_SURFACE_Y + .04;
+          ballBody.z = holder.mesh.position.z - .55;
+        } else {
+          holder.mesh.updateMatrixWorld(true);
+          holder.rig.rightArm.fore.localToWorld(handBallOffset.set(.015,-.304,.053));
+          ballBody.x = handBallOffset.x;
+          ballBody.y = Math.max(WATER_SURFACE_Y + ballRadius, handBallOffset.y);
+          ballBody.z = handBallOffset.z;
+        }
+      } else {
+        ballBody.x += ballBody.vx;
+        ballBody.y += ballBody.vy;
+        ballBody.z += ballBody.vz;
+        ballBody.vy -= 0.009;
+
+        // Skip Shot Water Bounce
+        if (ballBody.y <= WATER_SURFACE_Y + ballRadius) {
+          if (ballBody.vy < -.025) playAudio('splash');
+          if (ballBody.isSkip) {
+            ballBody.y = WATER_SURFACE_Y + ballRadius;
+            ballBody.vy = Math.abs(ballBody.vy) * 0.76;
+            ballBody.vz *= 0.88;
+            ballBody.isSkip = false;
+            addTwitchChat("Torok_WP", "What a skip shot! Skipped right off the water surface!");
+          } else {
+            ballBody.y = WATER_SURFACE_Y + ballRadius;
+            ballBody.vy = 0;
+            ballBody.vx *= 0.82;
+            ballBody.vz *= 0.82;
+          }
+        }
+
+        // Ball vs Goal Posts Collision
+        [-1.5, 1.5].forEach(px => {
+          const dx = ballBody.x - px;
+          const dz = ballBody.z - northGoal.zPos;
+          const d = Math.hypot(dx, dz);
+          if (d < ballRadius + 0.05 && ballBody.y < WATER_SURFACE_Y + 1.4) {
+            playAudio('post_clang');
+            ballBody.vx *= -0.75;
+            ballBody.vz *= -0.75;
+            resetShotClock(20);
+            showBanner("OFF THE POST! (20s RESET)");
+            addTwitchChat("PoloScout_EU", "CLANG! Hit the woodwork! Shot clock resets to 20s!");
+          }
+        });
+
+        // Ball vs Crossbar Collision
+        if (Math.abs(ballBody.x) <= 1.55 && Math.abs(ballBody.z - northGoal.zPos) < 0.12) {
+          if (Math.abs(ballBody.y - (WATER_SURFACE_Y + 1.35)) < ballRadius + 0.05) {
+            playAudio('post_clang');
+            ballBody.vy = -Math.abs(ballBody.vy) * 0.70;
+            ballBody.vz = Math.abs(ballBody.vz) * 0.65;
+            resetShotClock(20);
+            showBanner("OFF THE CROSSBAR! (20s RESET)");
+            addTwitchChat("AquaFan99", "Off the bar!! 20s reset!");
+          }
+        }
+
+        // Goal Score Check
+        if (ballBody.z <= northGoal.zPos && Math.abs(ballBody.x) < 1.45 && ballBody.y < WATER_SURFACE_Y + 1.3) {
+          scoreGoal();
+        }
+
+        // Goalkeeper Deflection
+        const distToGk = Math.hypot(pItaGK.mesh.position.x - ballBody.x, pItaGK.mesh.position.z - ballBody.z);
+        if (distToGk < 0.65 && ballBody.z < -13.2 && ballBody.y < WATER_SURFACE_Y + 1.2) {
+          playAudio('splash');
+          ballBody.vz = Math.abs(ballBody.vz) * 0.55;
+          resetShotClock(20);
+          showBanner("GOALKEEPER SAVE! (20s RESET)");
+          addTwitchChat("StreamBot", "Incredible two-hand save by the goalkeeper!");
+        }
+      }
+
+      ballMesh.position.set(ballBody.x, ballBody.y, ballBody.z);
+    }
+
+    /* =========================================================================
+       12. MATCH CLOCKS & RULES
+       ========================================================================= */
+    let hunScore = 4;
+    let itaScore = 3;
+    let quarterSeconds = 7 * 60 + 24;
+    let shotClockSeconds = 28;
+    let isClockRunning = true;
+    let exclusionTimer = 0;
+
+    setInterval(() => {
+      if (!isClockRunning || !waterMesh.visible || shootoutSession) return;
+
+      if (quarterSeconds > 0) {
+        quarterSeconds--;
+        const m = Math.floor(quarterSeconds / 60);
+        const s = quarterSeconds % 60;
+        document.getElementById('game-clock-display').innerText =
+          `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      }
+
+      if (shotClockSeconds > 0) {
+        shotClockSeconds--;
+        const scEl = document.getElementById('shot-clock-display');
+        scEl.innerText = shotClockSeconds + 's';
+        scEl.classList.toggle('urgent', shotClockSeconds <= 5);
+
+        if (shotClockSeconds === 0) {
+          playAudio('whistle_short');
+          showBanner("SHOT CLOCK VIOLATION (30s EXPIRED) — TURNOVER");
+          resetShotClock(30);
+          ballBody.heldBy = pItaHoleD;
+        }
+      }
+
+      if (exclusionTimer > 0) {
+        exclusionTimer--;
+        document.getElementById('excl-timer-val').innerText = exclusionTimer;
+        if (exclusionTimer === 0) {
+          document.getElementById('excl-chip-ita').style.display = 'none';
+          showBanner("EXCLUSION COMPLETE: ITA #4 RE-ENTERS POOL");
+          pItaHoleD.isExcluded = false;
+          pItaHoleD.mesh.position.set(0.1, swimHeight, -2.5);
+        }
+      }
+    }, 1000);
+
+    function resetShotClock(secs = 30) {
+      shotClockSeconds = secs;
+      document.getElementById('shot-clock-display').innerText = secs + 's';
+    }
+
+    function scoreGoal() {
+      hunScore++;
+      document.getElementById('match-score-text').innerText = `HUN ${hunScore} - ${itaScore} ITA`;
+      playAudio('goal_horn');
+      showBanner("GOAL! HUNGARY SCORES!");
+      resetShotClock(30);
+      addTwitchChat("AquaFan99", "GOOOOOAL!! Hungary takes the lead PogChamp");
+
+      ballBody.heldBy = null;
+      ballBody.vx = 0; ballBody.vy = 0; ballBody.vz = 0;
+      ballBody.x = 0; ballBody.y = WATER_SURFACE_Y + 0.65; ballBody.z = -3.2;
+      ballBody.heldBy = pUserMatch;
+
+      triggerCelebrationIndex(1);
+    }
+
+    function triggerOrdinaryFoul() {
+      playAudio('whistle_short');
+      showBanner("ORDINARY FOUL — FREE THROW AWARDED");
+    }
+
+    function trigger20sExclusion() {
+      playAudio('whistle_exclusion');
+      showBanner("MAJOR FOUL: 20s EXCLUSION! 6-ON-5 MAN UP");
+      exclusionTimer = 20;
+      pItaHoleD.isExcluded = true;
+      pItaHoleD.mesh.position.set(9.5, 0.15, -14.5);
+      document.getElementById('excl-chip-ita').style.display = 'inline-block';
+      document.getElementById('excl-timer-val').innerText = '20';
+      resetShotClock(20);
+      addTwitchChat("Torok_WP", "20s ejection box! 6-on-5 powerplay chance!");
+    }
+
+    function resetPracticeShot() {
+      ballBody.heldBy = pUserMatch;
+      ballBody.isDribbling = ballBody.isSkip = false;
+      ballBody.vx = ballBody.vy = ballBody.vz = 0;
+      resetShotClock(30);
+      document.querySelector('.match-tests').open = false;
+    }
+
+    function trigger5mPenalty() {
+      playAudio('whistle_short');
+      showBanner("5-METER PENALTY THROW AWARDED");
+      ballBody.heldBy = pUserMatch;
+      pUserMatch.mesh.position.set(0, swimHeight, -5.0);
+    }
+
+    function triggerSkipShot() {
+      if (!ballBody.heldBy) return;
+      playAudio('splash');
+      ballBody.heldBy = null;
+      ballBody.isSkip = true;
+      ballBody.vx = (Math.random() - 0.5) * 0.08;
+      ballBody.vy = -0.06;
+      ballBody.vz = -0.42;
+      showBanner("SKIP SHOT RELEASED!");
+    }
+
+    function triggerLobShot() {
+      if (!ballBody.heldBy) return;
+      playAudio('splash');
+      ballBody.heldBy = null;
+      ballBody.isSkip = false;
+      ballBody.vx = (Math.random() - 0.5) * 0.04;
+      ballBody.vy = 0.22;
+      ballBody.vz = -0.32;
+      showBanner("LOB SHOT OVER GOALKEEPER!");
+    }
+
+    function triggerPowerShot() {
+      if (!ballBody.heldBy) return;
+      playAudio('splash');
+      ballBody.heldBy = null;
+      ballBody.isSkip = false;
+      ballBody.vx = (Math.random() - 0.5) * 0.05;
+      ballBody.vy = 0.04;
+      ballBody.vz = -0.55;
+      showBanner("POWER SHOT RELEASED!");
+    }
+
+    function showBanner(txt) {
+      const b = document.getElementById('banner-notification');
+      b.innerText = txt;
+      b.style.display = 'block';
+      clearTimeout(b.timer);
+      b.timer = setTimeout(() => { b.style.display = 'none'; }, 2400);
+    }
+
+    /* =========================================================================
+       13. 32 SIGNATURE CELEBRATIONS
+       ========================================================================= */
+    const CELEBRATIONS_LIB = [
+      { id: 1, title: "The Ejection Fist Pump", desc: "Violent eggbeater vertical surge, right fist pumped high with water spray." },
+      { id: 2, title: "Double Bicep Flex Roar", desc: "Chest-high rise above water line, flexing both arms outward." },
+      { id: 3, title: "Surface Splash Explosion", desc: "Repeated surface water slaps sending cascading spray across pool." },
+      { id: 4, title: "The Golden Archer", desc: "Points left arm forward and draws right elbow back like an arrow." },
+      { id: 5, title: "Hole-Set Chest Thump", desc: "Beats chest with right fist celebrating physical dominance." },
+      { id: 6, title: "Submarine Depth Dive", desc: "Submerges beneath water line and resurfaces with victory head shake." },
+      { id: 7, title: "The Cap Toss & Catch", desc: "Removes competition cap, flips it spinning into the air and catches it." },
+      { id: 8, title: "Butterfly Surge Lift", desc: "Wide breaststroke arm sweep lifting torso waist-high." },
+      { id: 9, title: "The Finger Wag", desc: "Waves index finger ('Not in my pool!') toward defender." },
+      { id: 10, title: "Olympic Medal Bite", desc: "Mimics biting a gold medal with a wide victory grin." },
+      { id: 11, title: "Double Water Gunner", desc: "Points finger pistols toward cheering home fans." },
+      { id: 12, title: "The Deck Conductor", desc: "Conducts the roaring stadium crowd rhythm." },
+      { id: 13, title: "Heart Hands", desc: "Forms heart shape with both hands directed toward supporters." },
+      { id: 14, title: "The Helicopter Arm Spin", desc: "Rapid 360-degree windmill arm rotation throwing water droplets." },
+      { id: 15, title: "Two-Hand Deck Salute", desc: "Double military salute toward the coaching bench." },
+      { id: 16, title: "Back Arch Breacher", desc: "Gracefully arches back while rising, tossing water backward." },
+      { id: 17, title: "Torso Twist Splash", desc: "Rapidly rotates hips and torso left and right, whipping surface spray." },
+      { id: 18, title: "The Shield Defender", desc: "Crosses forearms in rigid X-shape asserting defensive dominance." },
+      { id: 19, title: "Cannonball Water Crater", desc: "Tucks knees and slaps down into water creating circular wave." },
+      { id: 20, title: "High Five Ripple", desc: "Swims over to teammates for celebratory water high-fives." },
+      { id: 21, title: "Skip Shot Head Nod", desc: "Calm, stoic swagger nod acknowledging hydrodynamic skip." },
+      { id: 22, title: "The Gladiator Bow", desc: "Deep theatrical bow honoring the packed stadium." },
+      { id: 23, title: "Point to Name Banner", desc: "Taps cap number with thumbs facing grandstands." },
+      { id: 24, title: "Treading Pirouette", desc: "Effortless 360-degree vertical sculling pirouette." },
+      { id: 25, title: "Ice in My Veins Tap", desc: "Taps forearm veins indicating clutch ice-cold finishing." },
+      { id: 26, title: "The Wavemaker Slap", desc: "Rhythmic alternating double-hand surface slaps." },
+      { id: 27, title: "Crown on the Head", desc: "Places invisible king's crown upon the water polo cap." },
+      { id: 28, title: "The Silencer (Shhh)", desc: "Brings index finger to lips to silence hostile away fans." },
+      { id: 29, title: "Belly Flop Wave", desc: "Playful belly breach into swimming wake." },
+      { id: 30, title: "Shark Fin Glide", desc: "Places hand vertically atop cap mimicking a dorsal fin." },
+      { id: 31, title: "Poolside Fist Slam", desc: "Pounds lane line float rope with triumphant cheer." },
+      { id: 32, title: "The Trophy Lift", desc: "Hoists imaginary European Champions League trophy above head." }
+    ];
+
+    let activeCelebIndex = 0;
+    let celebTimer = 0;
+
+    function triggerCelebrationIndex(idx) {
+      activeCelebIndex = idx;
+      celebTimer = 3.5;
+      const c = CELEBRATIONS_LIB[idx - 1] || CELEBRATIONS_LIB[0];
+      showBanner(`CELEBRATION: ${c.title.toUpperCase()}`);
+      playAudio('whistle_short');
+    }
+
+    const celebGrid = document.getElementById('celeb-grid');
+    CELEBRATIONS_LIB.forEach(c => {
+      const b = document.createElement('div');
+      b.className = 'corner-btn';
+      b.style.flexDirection = 'column';
+      b.style.alignItems = 'flex-start';
+      b.style.padding = '12px';
+      b.innerHTML = `
+        <span style="font-size: 10px; color: var(--accent-gold);">#${c.id}</span>
+        <b style="font-size: 13px;">${c.title}</b>
+        <small style="color: var(--text-muted); font-size: 11px; margin-top: 4px;">${c.desc}</small>
+      `;
+      b.onclick = () => triggerCelebrationIndex(c.id);
+      celebGrid.appendChild(b);
+    });
+
+    /* =========================================================================
+       14. EA FC CHARACTER CUSTOMIZER
+       ========================================================================= */
+
+    function switchStadium(s) {
+      showBanner("VENUE SET TO: " + s.toUpperCase());
+      const labelMap = {
+        danube: "Danube Arena (Budapest)",
+        rome: "Stadio del Nuoto (Rome)",
+        stanford: "Avery Aquatics (California)",
+        belgrade: "Tašmajdan District (Belgrade)",
+        barcelona: "Barceloneta Marina (Barcelona)"
+      };
+      document.getElementById('active-venue-label').innerText = labelMap[s] || s.toUpperCase();
+      buildStadiumCrowdAndRefs(s);
+    }
+
+    function openPackModal() {
+      playAudio('whistle_exclusion');
+      playAudio('goal_horn');
+      document.getElementById('pack-modal').classList.add('open');
+    }
+
+    function closePackModal() {
+      document.getElementById('pack-modal').classList.remove('open');
+      playAudio('click');
+    }
+
+    /* =========================================================================
+       15. NAVIGATION & SCREEN CONTROLLER
+       ========================================================================= */
+    const titleSet = new THREE.Group();
+    scene.add(titleSet);
+    const deck = surface(0x536e75);
+    const concrete = surface(0x244751);
+    const tile = surface(0x36858f, .34);
+    meshPart(titleSet,unitBox,deck,0,-.09,1,24,.18,5);
+    for (let seam=-10; seam<=10; seam++) {
+      meshPart(titleSet,unitBox,surface(0x405a62),seam,0,1, .012,.004,5);
+    }
+    meshPart(titleSet,unitBox,tile,0,-.34,-7,24,.10,12);
+    meshPart(titleSet,unitBox,surface(0x849d9c),0,-.025,-1.5,24,.05,.24);
+    meshPart(titleSet,unitBox,concrete,0,3,-11,24,7,.3);
+    for (let bay=-5; bay<=5; bay++) {
+      meshPart(titleSet,unitBox,surface(0x142e3e),bay*2.2,3,-10.78,1.92,4.6,.13);
+      meshPart(titleSet,unitBox,surface(0x7e969a),bay*2.2,4.8,-10.68,1.64,.39,.08);
+      meshPart(titleSet,unitBox,deck,bay*2.2+1.07,1.55,-8,.12,3.1,.12);
+    }
+    meshPart(titleSet,unitBox,deck,0,1.18,-8,24,.09,.12);
+    meshPart(titleSet,unitBox,deck,0,1.53,-8,24,.10,.12);
+    for (let lane=-3; lane<=3; lane++) {
+      meshPart(titleSet,unitBox,surface(lane % 2 ? 0x659294 : 0x1b6274),lane*1.65,-.28,-5.8,.075,.027,8.4);
+    }
+    const homeAthlete = createDetailedHumanoid(false, surface(0xb87956), surface(0x3a261e),
+      null, null, {team:'HUN', number: 9});
+    homeAthlete.scale.setScalar(.77);
+    homeAthlete.position.set(1.36,0,-.91);
+    homeAthlete.rotation.y = -.32;
+    titleSet.add(homeAthlete);
+    homeAthlete.rig.rightArm.rotation.x = -.36;
+    homeAthlete.rig.rightArm.fore.rotation.x = -.88;
+    oval(homeAthlete.rig.rightArm.fore, surface(0xedb94e,.61),.02,-.255,.095,.129,.129,.129);
+    const keyLight = new THREE.PointLight(0x83c9ff,.40,11);
+    keyLight.position.set(2.4,3.2,2.6);
+    titleSet.add(keyLight);
+
+
+    let activeScreen = 'view-home';
+
+    function navigateTo(screenId, silent = false) {
+      if (!silent) playAudio('click');
+      const previousScreen=activeScreen;
+      closeHomeSections();
+      if(previousScreen==='view-customizer'&&screenId!==previousScreen) hideAthleteStudio();
+      if(previousScreen==='view-credits'&&screenId!==previousScreen)closeCreditsScene();
+      if(screenId!=='view-match' && screenId!=='view-online') leaveShootout();
+      if(activeScreen==='view-rpg-campaign' && screenId!==activeScreen) {
+        if(isRidingBike) dismountBike();
+        element('interaction-prompt').style.display='none';
+        element('twitch-chat-sidebar').classList.remove('open');
+      }
+      if(screenId==='view-online' && !onlineRoom) element('online-status').textContent='';
+      closeModals();
+      setGameMenu(false);
+      if(activeScreen==='view-profile'&&screenId!==activeScreen) invalidateAthletePreview();
+      if(recorder?.state==='recording'&&screenId!==activeScreen)recorder.stop();
+      pUser.visible=true;
+      document.querySelector('.match-tests').open = false;
+      document.querySelectorAll('.view-screen').forEach(s => s.classList.remove('active'));
+      const target = document.getElementById(screenId);
+      if (target) target.classList.add('active');
+      activeScreen = screenId;
+      document.body.dataset.screen = screenId;
+      document.body.dataset.mode=screenId==='view-match' && shootoutSession?'shootout':'';
+      element('shootout-hud').hidden=document.body.dataset.mode!=='shootout';
+      reflectGamePage(screenId);
+      if(screenId==='view-board') loadLeague();
+      poolDeck.visible = southCage.visible = screenId === 'view-match';
+      const isStudio = screenId === 'view-customizer';
+      titleSet.visible = screenId === 'view-home' || screenId === 'view-play-now';
+      homeAthlete.visible = screenId === 'view-home';
+
+      controls.enabled = isStudio || screenId === 'view-match';
+
+      document.getElementById('current-screen-badge').innerText = ({'view-play-now':'Local Play','view-board':'Stats & Standings','view-rpg-campaign':'Campaign','view-customizer':'Character Studio'})[screenId] || screenId.replace('view-', '').replace('-', ' ');
+
+      if (screenId === 'view-rpg-campaign' || screenId === 'view-travel') {
+        rpgWorldGroup.visible = true;
+        waterMesh.visible = false;
+        cage.visible = false;
+        ballMesh.visible = false;
+        stadiumGroup.visible = false;
+        matchPlayers.forEach(p => { p.mesh.visible = false; });
+        athleteRoot.visible = screenId !== 'view-travel';
+        if(!keepCampusPosition) athleteRoot.position.set(-4.85,0,11.5);
+        resetPose(pUser);
+        pUser.capGroup.visible = false;
+        pUser.hairGroup.visible = true;
+        athleteRoot.rotation.set(0, Math.PI, 0);
+        camera.position.set(0, 4.5, 16);
+        controls.target.set(0, 1.2, 8);
+      } else if (screenId === 'view-match') {
+        rpgWorldGroup.visible = false;
+        waterMesh.visible = true;
+        cage.visible = true;
+        ballMesh.visible = true;
+        stadiumGroup.visible = true;
+        athleteRoot.visible = false;
+        matchPlayers.forEach(p => {
+          p.mesh.visible = true;
+          p.mesh.position.set(p.baseX, swimHeight, p.baseZ);
+        });
+        if(shootoutSession) {
+          camera.position.set(-5.8,3.4,-4.6);
+          controls.target.set(0,1.15,-11.8);
+        } else {
+          camera.position.set(-7.5,5.25,7.6);
+          controls.target.set(0,.82,-4.2);
+          pUserMatch.mesh.rotation.y=Math.PI;
+          pItaHoleD.mesh.rotation.y=0;
+          pItaGK.mesh.rotation.y=0;
+          pHunGK.mesh.rotation.y=Math.PI;
+          resetPracticeShot();
+        }
+      } else {
+        rpgWorldGroup.visible = false;
+        waterMesh.visible = false;
+        cage.visible = false;
+        ballMesh.visible = false;
+        stadiumGroup.visible = false;
+        matchPlayers.forEach(p => { p.mesh.visible = false; });
+        athleteRoot.visible = screenId === 'view-celebrations';
+        athleteRoot.position.set(0, 0, 0);
+        athleteRoot.rotation.set(0, 0.14, 0);
+        resetPose(pUser);
+        pUser.capGroup.visible = false;
+        pUser.hairGroup.visible = true;
+        if (titleSet.visible) {
+          camera.position.set(0, 2.6, 5.4);
+          controls.target.set(0, 1.5, 0);
+        } else {
+          camera.position.set(0, 1.34, window.innerWidth < 600 ? 3.5 : 3.8);
+          controls.target.set(isStudio ? 0.56 : 0, 0.95, 0);
+        }
+      }
+      if(screenId==='view-profile')renderCareerProfile();
+      if(isStudio)openAthleteStudio(previousScreen);
+      if(screenId==='view-credits')openCreditsScene(previousScreen);
+    }
+
+    function enterRPGCampaign() {
+      openWorldTour();
+    }
+    function arrivalAt(town) {
+      currentTown=town;
+      element('rpg-town-title').textContent=town.name;
+      element('home-venue-name').textContent=town.name;
+      element('rpg-town-badge').textContent='Campus '+town.id+' of '+TOWNS_DATABASE.length;
+      element('rpg-town-desc').textContent=town.desc;
+    }
+    /* =========================================================================
+       16. BIKE MOUNT / DISMOUNT CONTROLLER
+       ========================================================================= */
+    function mountBike() {
+      isRidingBike = true;
+      playAudio('bike_bell');
+      showBanner("MOUNTED ROAD BIKE (CRUISE AT HIGH SPEED!)");
+      document.getElementById('interaction-prompt').innerText = "🚲 PRESS [E] TO DISMOUNT BIKE";
+
+      // Attach bike to player
+      rpgWorldGroup.remove(roadBikeMesh);
+      athleteRoot.add(roadBikeMesh);
+      roadBikeMesh.position.set(0, 0, 0);
+      roadBikeMesh.rotation.set(0, 0, 0);
+
+      // Cycling Stance: Hands on Drop Bars, Legs on Pedals
+      pUser.rig.leftArm.rotation.set(0.72, 0, 0.28);
+      pUser.rig.leftArm.fore.rotation.set(0.45, 0, 0);
+      pUser.rig.rightArm.rotation.set(0.72, 0, -0.28);
+      pUser.rig.rightArm.fore.rotation.set(0.45, 0, 0);
+      pUser.rig.headGroup.rotation.x = -0.25; // Looking forward
+    }
+
+    function dismountBike() {
+      isRidingBike = false;
+      playAudio('bike_bell');
+      showBanner("DISMOUNTED ROAD BIKE");
+      document.getElementById('interaction-prompt').innerText = "🚲 PRESS [E] TO RIDE ROAD BIKE";
+
+      // Detach bike and place in world
+      athleteRoot.remove(roadBikeMesh);
+      roadBikeMesh.position.set(athleteRoot.position.x + 1.2, 0, athleteRoot.position.z);
+      roadBikeMesh.rotation.set(0, athleteRoot.rotation.y, 0);
+      rpgWorldGroup.add(roadBikeMesh);
+
+      resetPose(pUser);
+      pUser.rig.headGroup.rotation.x = 0;
+    }
+
+    /* =========================================================================
+       17. DROPDOWN, TWITCH CHAT & MINIMAP RADAR
+       ========================================================================= */
+    function toggleHamburger() {
+      playAudio('click');
+      setGameMenu(!element('hamburger-dropdown').classList.contains('open'));
+    }
+
+    function toggleWorldMap() {
+      playAudio('click');
+      if(activeScreen==='view-world-tour') closeWorldTour(); else openWorldTour();
+    }
+
+    function toggleTwitchChat() {
+      playAudio('click');
+      document.getElementById('twitch-chat-sidebar').classList.toggle('open');
+    }
+
+    function openModal(id) {
+      playAudio('click');
+      setGameMenu(false);
+      closeModals();
+      document.getElementById(id).classList.add('open');
+    }
+
+    function closeModals() {
+      document.querySelectorAll('.hud-modal').forEach(m => m.classList.remove('open'));
+    }
+
+    function addTwitchChat(user, text) {
+      const feed = document.getElementById('twitch-chat-feed');
+      const msg = document.createElement('div');
+      msg.className = 'chat-msg';
+      const username=document.createElement('span');
+      username.className='chat-user';
+      username.textContent=user+':';
+      msg.append(username,' '+text);
+      feed.appendChild(msg);
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    function sendTwitchChat(e) {
+      e.preventDefault();
+      const input = document.getElementById('twitch-chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+      addTwitchChat("You", text);
+      input.value = '';
+    }
+
+    // Keyboard Shortcuts: [TAB] Twitch chat, [E] Bike mount, [ESC] Modals
+    window.addEventListener('keydown', e => {
+      if (e.code === 'KeyT' && activeScreen === 'view-rpg-campaign' && !e.repeat &&
+        !e.target.closest('input, textarea, [contenteditable]')) {
+        e.preventDefault();
+        toggleTwitchChat();
+      }
+      if (e.key === 'Escape') {
+        if(activeScreen==='view-world-tour') closeWorldTour();
+        else closeModals();
+        setGameMenu(false);
+      }
+      if (e.key.toLowerCase() === 'e' && activeScreen === 'view-rpg-campaign' && !campusPaused() && !e.target.closest?.('input,textarea,select')) {
+        if (isRidingBike) {
+          dismountBike();
+        } else if (roadBikeMesh) {
+          const d = athleteRoot.position.distanceTo(roadBikeMesh.position);
+          if (d < 3.2) {
+            mountBike();
+          }
+        }
+      }
+    });
+
+    // 2D Radar Minimap Renderer
+    const minimapCanvas = document.getElementById('minimap-canvas');
+    const mmCtx = minimapCanvas.getContext('2d');
+
+    function renderMinimap() {
+      const width=minimapCanvas.width, scale=width/currentTown.size;
+      const point=n=>width/2+n*scale;
+      mmCtx.fillStyle='#142737';mmCtx.fillRect(0,0,width,width);
+      mmCtx.fillStyle='#354b55';
+      mmCtx.fillRect(0,point(-4.25),width,8.5*scale);
+      mmCtx.fillRect(point(-4.25),0,8.5*scale,width);
+      mmCtx.strokeStyle='#728790';mmCtx.lineWidth=1;mmCtx.setLineDash([3,5]);
+      mmCtx.beginPath();mmCtx.moveTo(0,width/2);mmCtx.lineTo(width,width/2);
+      mmCtx.moveTo(width/2,0);mmCtx.lineTo(width/2,width);mmCtx.stroke();mmCtx.setLineDash([]);
+      mmCtx.fillStyle='#56737a';
+      mmCtx.fillRect(point(currentTown.size*.22-8),point(currentTown.size*.22-9),16*scale,18*scale);
+      mmCtx.fillStyle='#bfc88a';mmCtx.fillRect(point(natatoriumPos.x)-4,point(natatoriumPos.z)-4,8,8);
+      mmCtx.fillStyle='#71a4ae';
+      npcs.forEach(n=>mmCtx.fillRect(point(n.position.x)-1,point(n.position.z)-1,2,2));
+      mmCtx.fillStyle='#dfbd78';
+      vehicles.forEach(v=>mmCtx.fillRect(point(v.position.x)-2,point(v.position.z)-1.5,4,3));
+      mmCtx.save();
+      mmCtx.translate(point(athleteRoot.position.x),point(athleteRoot.position.z));
+      mmCtx.rotate(Math.PI-athleteRoot.rotation.y);
+      mmCtx.fillStyle='#a2fff0';mmCtx.strokeStyle='#06131c';mmCtx.lineWidth=2;
+      mmCtx.beginPath();mmCtx.moveTo(0,-8);mmCtx.lineTo(5,5);mmCtx.lineTo(0,3);mmCtx.lineTo(-5,5);mmCtx.closePath();mmCtx.stroke();mmCtx.fill();
+      mmCtx.restore();
+    }
+    /* =========================================================================
+       18. MAIN 60 FPS SIMULATION & ANIMATION LOOP
+       ========================================================================= */
+    const keys = {};
+    window.addEventListener('keydown', e => {
+      if(!(e.target instanceof Element) || !e.target.closest('input,textarea,select,dialog')) keys[e.key.toLowerCase()] = true;
+    });
+    window.addEventListener('blur',()=>Object.keys(keys).forEach(key=>{keys[key]=false;}));
+    window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = Math.min(clock.getDelta(), .05);
+      const time = clock.elapsedTime;
+      if (activeScreen === 'view-home') {
+        homeAthlete.rig.headGroup.rotation.y = Math.sin(time*.85)*.12;
+        homeAthlete.rig.leftArm.rotation.x = Math.sin(time*1.5)*.055;
+        homeAthlete.rig.rightArm.rotation.x = -.36 + Math.sin(time*1.5)*.055;
+      }
+
+      if(activeScreen==='view-travel') updateWorldTravel(delta);
+      if(activeScreen==='view-customizer') updateAthleteStudio(time);
+      if(activeScreen==='view-credits') drawCreditsScene(time);
+      // RPG Movement Controller
+      if (activeScreen === 'view-rpg-campaign' && !campusPaused()) {
+        const baseSpeed = isRidingBike ? (keys['shift'] ? 16.0 : 11.5) : (keys['shift'] ? 8.5 : 4.5);
+        const speed = baseSpeed * delta;
+        let moved = false;
+
+        if (keys['w'] || keys['arrowup']) { athleteRoot.position.z -= speed; moved = true; athleteRoot.rotation.y = Math.PI; }
+        if (keys['s'] || keys['arrowdown']) { athleteRoot.position.z += speed; moved = true; athleteRoot.rotation.y = 0; }
+        if (keys['a'] || keys['arrowleft']) { athleteRoot.position.x -= speed; moved = true; athleteRoot.rotation.y = -Math.PI / 2; }
+        if (keys['d'] || keys['arrowright']) { athleteRoot.position.x += speed; moved = true; athleteRoot.rotation.y = Math.PI / 2; }
+
+        // Bike Cornering Lean
+        if (isRidingBike) {
+          if (keys['a'] || keys['arrowleft']) athleteRoot.rotation.z = 0.25;
+          else if (keys['d'] || keys['arrowright']) athleteRoot.rotation.z = -0.25;
+          else athleteRoot.rotation.z = 0;
+
+          // Pedaling animation & rotating wheels
+          if (moved) {
+            roadBikeMesh.wFront.rotation.x += speed * 4;
+            roadBikeMesh.wRear.rotation.x += speed * 4;
+            pUser.rig.leftLeg.rotation.x = Math.sin(time * 12) * 0.45;
+            pUser.rig.rightLeg.rotation.x = -Math.sin(time * 12) * 0.45;
+          }
+        } else {
+          athleteRoot.rotation.z = 0;
+          if (moved) {
+            // Walking Limb Swing
+            pUser.rig.leftArm.rotation.x = Math.sin(time * 8) * 0.45;
+            pUser.rig.rightArm.rotation.x = -Math.sin(time * 8) * 0.45;
+            pUser.rig.leftLeg.rotation.x = -Math.sin(time * 8) * 0.55;
+            pUser.rig.rightLeg.rotation.x = Math.sin(time * 8) * 0.55;
+          } else {
+            pUser.rig.leftArm.rotation.x = 0;
+            pUser.rig.rightArm.rotation.x = 0;
+            pUser.rig.leftLeg.rotation.x = 0;
+            pUser.rig.rightLeg.rotation.x = 0;
+          }
+        }
+
+        followCampusCamera();
+
+        // Interaction Prompt for Bike
+        const promptEl = document.getElementById('interaction-prompt');
+        if (roadBikeMesh) {
+          const distToBike = athleteRoot.position.distanceTo(roadBikeMesh.position);
+          if (!isRidingBike && distToBike < 3.0) {
+            promptEl.innerText = "🚲 PRESS [E] TO RIDE ROAD BIKE";
+            promptEl.style.display = 'block';
+          } else if (isRidingBike) {
+            promptEl.innerText = "🚲 PRESS [E] TO DISMOUNT BIKE";
+            promptEl.style.display = 'block';
+          } else {
+            promptEl.style.display = 'none';
+          }
+        }
+
+        // Check entry into Championship Aquatic Center doors!
+        const distToDoor = Math.hypot(athleteRoot.position.x-natatoriumPos.x,athleteRoot.position.z-(natatoriumPos.z+8.8));
+        if (distToDoor<1.8 && athleteRoot.position.y<1.1) launchPoolPractice();
+
+        // Animate NPCs with limb swings
+        npcs.forEach((n, idx) => {
+          n.position.x += n.vx * delta;
+          n.position.z += n.vz * delta;
+          n.rig.leftArm.rotation.x = Math.sin(time * 7 + idx) * 0.35;
+          n.rig.rightArm.rotation.x = -Math.sin(time * 7 + idx) * 0.35;
+          n.rig.leftLeg.rotation.x = -Math.sin(time * 7 + idx) * 0.45;
+          n.rig.rightLeg.rotation.x = Math.sin(time * 7 + idx) * 0.45;
+
+          const bound = currentTown.size * 0.45;
+          if (Math.abs(n.position.x) > bound) n.vx *= -1;
+          if (Math.abs(n.position.z) > bound) n.vz *= -1;
+        });
+
+        advanceTraffic(delta);
+        resolveCampaignCollisions();
+
+        renderMinimap();
+      }
+
+      // Live 7v7 Match Arena Simulation
+      if (activeScreen === 'view-match') {
+        // Water Wave Animation
+        const pos = waterGeo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          const u = pos.getX(i);
+          const v = pos.getY(i);
+          pos.setZ(i, Math.sin(u * 0.8 + time * 2.5) * 0.05 + Math.cos(v * 0.8 + time * 2.5) * 0.05);
+        }
+        pos.needsUpdate = true;
+        waterGeo.computeVertexNormals();
+
+        if(shootoutSession) drawShootout(time);
+        else {
+        // Animate Athletes Eggbeater Treading
+        matchPlayers.forEach((p, idx) => {
+          if (!p.isExcluded) {
+            p.mesh.position.y = swimHeight-1.31*(p.mesh.scale.y-1) + Math.sin(time * 3 + idx) * 0.04;
+            p.rig.leftLeg.rotation.x = Math.sin(time * 6 + idx) * 0.25;
+            p.rig.rightLeg.rotation.x = Math.cos(time * 6 + idx) * 0.25;
+            p.rig.leftArm.rotation.set(.18 + Math.sin(time*3+idx)*.16,0,-1.1);
+            const isHolding = ballBody.heldBy === p && !ballBody.isDribbling;
+            p.rig.rightArm.rotation.set(isHolding ? .17 : .22 + Math.cos(time*3+idx)*.13,0,isHolding ? 2.32 : 1.04);
+            p.rig.rightArm.fore.rotation.set(isHolding ? -.18 : -.32,0,isHolding ? .20 : 0);
+            p.rig.leftArm.fore.rotation.set(-.32,0,0);
+          }
+        });
+
+        resolveMatchCollisions(delta);
+
+        }
+
+        // Animate Stadium Fans (Cheering & Swaying)
+        crowdFans.forEach(fan => {
+          fan.rotation.z = Math.sin(time * 1.7 + fan.animOffset) * 0.055;
+        });
+
+        // Animate Referees Pacing
+        referees.forEach((ref, idx) => {
+          const phase = time * .21 + idx * Math.PI;
+          ref.position.z = Math.sin(phase) * 4;
+          ref.rotation.y = Math.atan2(-Math.sign(ref.position.x), Math.cos(phase)*.8);
+          ref.rig.leftLeg.rotation.x = Math.sin(time*5+idx)*.13;
+          ref.rig.rightLeg.rotation.x = -ref.rig.leftLeg.rotation.x;
+        });
+
+        // Active Celebration Animation
+        if (!shootoutSession && celebTimer > 0) {
+          celebTimer -= delta;
+          pUserMatch.mesh.position.y = swimHeight + 0.3 + Math.sin(time * 8) * 0.15;
+          pUserMatch.rig.rightArm.rotation.set(0, 0, -2.4);
+          pUserMatch.rig.rightArm.fore.rotation.set(0, 0, -1.2);
+          pUserMatch.rig.leftArm.rotation.set(0.4, 0, 0.8);
+          if (celebTimer <= 0) {
+            resetPose(pUserMatch.mesh);
+          }
+        }
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      if(activeScreen==='view-customizer') frameAthleteStudio();
+    });
+
+  </script>
+  <script src="/play.js"></script>
+  <script src="/career.js"></script>
+</body>
+</html>
